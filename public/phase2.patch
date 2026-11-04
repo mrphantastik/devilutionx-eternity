@@ -1,0 +1,277 @@
+diff --git a/Source/itemdat.cpp b/Source/itemdat.cpp
+index c34091a..fd574dd 100644
+--- a/Source/itemdat.cpp
++++ b/Source/itemdat.cpp
+@@ -542,6 +542,7 @@ const UniqueItem UniqueItems[] = {
+ { N_("Acolyte's Amulet"),        UITYPE_AMULET,             10,        2,    10000, { { IPL_MANATOLIFE,      50,       50 }, { IPL_INVCURS,        183           }, {                                   }, {                                   }, {                                   }, {                                   } }  },
+ 	// TRANSLATORS: Unique Item section end.
+ { N_("Gladiator's Ring"),        UITYPE_RING,               10,        2,    10000, { { IPL_LIFETOMANA,      40,       40 }, { IPL_INVCURS,        186           }, {                                   }, {                                   }, {                                   }, {                                   } }  },
++{ N_("Kadi's Fury"),             UITYPE_BROADSWR,            1,        6,    25000, { { IPL_TOHIT,          100,      100 }, { IPL_DAMP,           175,      175 }, { IPL_FASTATTACK,       4,        4 }, { IPL_LIGHTDAM,         4,       16 }, { IPL_FASTWALK                      }, { IPL_ALLRES,         -30,      -30 } }  },
+ { "",                            UITYPE_INVALID,             0,        0,        0, { {                                   }, {                                   }, {                                   }, {                                   }, {                                   }, {                                   } }  },
+ 	// clang-format on
+ };
+diff --git a/Source/itemdat.h b/Source/itemdat.h
+index 24dc2ef..9bf14ed 100644
+--- a/Source/itemdat.h
++++ b/Source/itemdat.h
+@@ -372,6 +372,7 @@ enum class ItemSpecialEffectHf : uint8_t {
+ 	Doppelganger       = 1 << 4,
+ 	ACAgainstDemons    = 1 << 5,
+ 	ACAgainstUndead    = 1 << 6,
++	FastWalk           = 1 << 7,
+ 	// clang-format on
+ };
+ use_enum_as_flags(ItemSpecialEffectHf);
+@@ -543,6 +544,7 @@ enum item_effect_type : int8_t {
+ 	IPL_ACUNDEAD,
+ 	IPL_MANATOLIFE,
+ 	IPL_LIFETOMANA,
++	IPL_FASTWALK,
+ 	IPL_INVALID = -1,
+ };
+ 
+diff --git a/Source/items.cpp b/Source/items.cpp
+index 0f29883..44ab232 100644
+--- a/Source/items.cpp
++++ b/Source/items.cpp
+@@ -773,9 +773,9 @@ int SaveItemPower(const Player &player, Item &item, ItemPower &power)
+ 		item._iPLMR += r;
+ 		break;
+ 	case IPL_ALLRES:
+-		item._iPLFR = std::max(item._iPLFR + r, 0);
+-		item._iPLLR = std::max(item._iPLLR + r, 0);
+-		item._iPLMR = std::max(item._iPLMR + r, 0);
++		item._iPLFR += r;
++		item._iPLLR += r;
++		item._iPLMR += r;
+ 		break;
+ 	case IPL_SPLLVLADD:
+ 		item._iSplLvlAdd = r;
+@@ -1051,6 +1051,9 @@ int SaveItemPower(const Player &player, Item &item, ItemPower &power)
+ 		item._iPLHP -= portion;
+ 		item._iPLMana += portion;
+ 	} break;
++	case IPL_FASTWALK:
++		item._iDamAcFlags |= ItemSpecialEffectHf::FastWalk;
++		break;
+ 	default:
+ 		break;
+ 	}
+@@ -1460,7 +1463,7 @@ _unique_items CheckUnique(Item &item, int lvl, int uper, bool recreate)
+ 	int numu = 0;
+ 	for (int j = 0; UniqueItems[j].UIItemId != UITYPE_INVALID; j++) {
+ 		if (!IsUniqueAvailable(j))
+-			break;
++			continue;
+ 		if (UniqueItems[j].UIItemId == AllItemsList[item.IDidx].iItemId
+ 		    && lvl >= UniqueItems[j].UIMinLvl
+ 		    && (recreate || !UniqueItemFlags[j] || gbIsMultiplayer)) {
+@@ -1497,7 +1500,7 @@ void GetUniqueItem(const Player &player, Item &item, _unique_items uid)
+ 	CopyUtf8(item._iIName, UniqueItems[uid].UIName, sizeof(item._iIName));
+ 	item._iIvalue = UniqueItems[uid].UIValue;
+ 
+-	if (item._iMiscId == IMISC_UNIQUE)
++	if (item._iMiscId == IMISC_UNIQUE || uid == UITEM_KADISFURY)
+ 		item._iSeed = uid;
+ 
+ 	item._iUid = uid;
+@@ -1542,7 +1545,7 @@ void SetupAllItems(const Player &player, Item &item, _item_indexes idx, uint32_t
+ 	else if (uper == 1)
+ 		item._iCreateInfo |= CF_UPER1;
+ 
+-	if (item._iMiscId != IMISC_UNIQUE) {
++	if (item._iMiscId != IMISC_UNIQUE && !(recreate && iseed == UITEM_KADISFURY)) {
+ 		int iblvl = GetItemBLevel(lvl, item._iMiscId, onlygood, uper == 15);
+ 		if (iblvl != -1) {
+ 			_unique_items uid = CheckUnique(item, iblvl, uper, recreate);
+@@ -1556,7 +1559,7 @@ void SetupAllItems(const Player &player, Item &item, _item_indexes idx, uint32_t
+ 			ItemRndDur(item);
+ 	} else {
+ 		if (item._iLoc != ILOC_UNEQUIPABLE) {
+-			if (iseed > 109 || AllItemsList[static_cast<size_t>(idx)].iItemId != UniqueItems[iseed].UIItemId) {
++			if (iseed > UITEM_KADISFURY || AllItemsList[static_cast<size_t>(idx)].iItemId != UniqueItems[iseed].UIItemId) {
+ 				item.clear();
+ 				return;
+ 			}
+@@ -2482,7 +2485,7 @@ uint8_t GetOutlineColor(const Item &item, bool checkReq)
+ 
+ bool IsUniqueAvailable(int i)
+ {
+-	return gbIsHellfire || i <= 89;
++	return gbIsHellfire || i <= 89 || i == UITEM_KADISFURY;
+ }
+ 
+ void ClearUniqueItemFlags()
+@@ -2599,6 +2602,9 @@ void CalcPlrItemVals(Player &player, bool loadgfx)
+ 				spl |= GetSpellBitmask(item._iSpell);
+ 			}
+ 
++			if (item._iMagical == ITEM_QUALITY_UNIQUE && item._iUid == UITEM_KADISFURY) {
++				item._iDamAcFlags |= ItemSpecialEffectHf::FastWalk;
++			}
+ 			if (item._iMagical == ITEM_QUALITY_NORMAL || item._iIdentified) {
+ 				bdam += item._iPLDam;
+ 				btohit += item._iPLToHit;
+@@ -3241,8 +3247,9 @@ Item *SpawnUnique(_unique_items uid, Point position, std::optional<int> level /*
+ 	while (AllItemsList[idx].iItemId != UniqueItems[uid].UIItemId)
+ 		idx++;
+ 
+-	if (sgGameInitInfo.nDifficulty == DIFF_NORMAL) {
++	if (sgGameInitInfo.nDifficulty == DIFF_NORMAL || uid == UITEM_KADISFURY) {
+ 		GetItemAttrs(item, static_cast<_item_indexes>(idx), curlv);
++		item._iCreateInfo = curlv;
+ 		GetUniqueItem(*MyPlayer, item, uid);
+ 		SetupItem(item);
+ 	} else {
+@@ -3274,7 +3281,7 @@ void SpawnItem(Monster &monster, Point position, bool sendmsg, bool spawn /*= fa
+ 		if (uniqueItem != nullptr && sendmsg)
+ 			NetSendCmdPItem(false, CMD_DROPITEM, uniqueItem->position, *uniqueItem);
+ 		return;
+-	} else if (monster.isUnique() || dropsSpecialTreasure) {
++	} else if (monster.isUnique() || dropsSpecialTreasure || monster.type().type == MT_DIABLO) {
+ 		// Unqiue monster is killed => use better item base (for example no gold)
+ 		idx = RndUItem(&monster);
+ 	} else if (dropBrain && !gbIsMultiplayer) {
+@@ -3308,11 +3315,9 @@ void SpawnItem(Monster &monster, Point position, bool sendmsg, bool spawn /*= fa
+ 	int ii = AllocateItem();
+ 	auto &item = Items[ii];
+ 	GetSuperItemSpace(position, ii);
+-	int uper = monster.isUnique() ? 15 : 1;
++	int uper = (monster.isUnique() || monster.type().type == MT_DIABLO) ? 15 : 1;
+ 
+ 	int8_t mLevel = monster.data().level;
+-	if (!gbIsHellfire && monster.type().type == MT_DIABLO)
+-		mLevel -= 15;
+ 
+ 	SetupAllItems(*MyPlayer, item, idx, AdvanceRndSeed(), mLevel, uper, onlygood, false, false);
+ 
+@@ -3915,6 +3920,8 @@ bool DoOil(Player &player, int cii)
+ 		return _("50% Mana moved to Health");
+ 	case IPL_LIFETOMANA:
+ 		return _("40% Health moved to Mana");
++	case IPL_FASTWALK:
++		return _("faster walk");
+ 	default:
+ 		return _("Another ability (NW)");
+ 	}
+@@ -4679,7 +4686,7 @@ std::string DebugSpawnUniqueItem(std::string itemName)
+ 	int uniqueIndex = 0;
+ 	for (int j = 0; UniqueItems[j].UIItemId != UITYPE_INVALID; j++) {
+ 		if (!IsUniqueAvailable(j))
+-			break;
++			continue;
+ 
+ 		const std::string tmp = AsciiStrToLower(UniqueItems[j].UIName);
+ 		if (tmp.find(itemName) != std::string::npos) {
+diff --git a/Source/items.h b/Source/items.h
+index 6a76d82..c573bdc 100644
+--- a/Source/items.h
++++ b/Source/items.h
+@@ -130,6 +130,7 @@ enum _unique_items : int8_t {
+ 	UITEM_BLEEDER,
+ 	UITEM_CONSTRICT,
+ 	UITEM_ENGAGE,
++	UITEM_KADISFURY = 110,
+ 	UITEM_INVALID = -1,
+ };
+ 
+diff --git a/Source/levels/trigs.cpp b/Source/levels/trigs.cpp
+index 75765d2..903cf92 100644
+--- a/Source/levels/trigs.cpp
++++ b/Source/levels/trigs.cpp
+@@ -79,6 +79,9 @@ bool IsWarpOpen(dungeon_type type)
+ 
+ 	Player &myPlayer = *MyPlayer;
+ 
++	if (IsAnyOf(type, DTYPE_CATACOMBS, DTYPE_CAVES, DTYPE_HELL))
++		return true;
++
+ 	if (type == DTYPE_CATACOMBS && (myPlayer.pTownWarps & 1) != 0)
+ 		return true;
+ 	if (type == DTYPE_CAVES && (myPlayer.pTownWarps & 2) != 0)
+diff --git a/Source/loadsave.cpp b/Source/loadsave.cpp
+index 75ee449..1e7b245 100644
+--- a/Source/loadsave.cpp
++++ b/Source/loadsave.cpp
+@@ -326,6 +326,8 @@ void LoadItemData(LoadHelper &file, Item &item)
+ 	item.dwBuff = file.NextLE<uint32_t>();
+ 	if (gbIsHellfireSaveGame)
+ 		item._iDamAcFlags = static_cast<ItemSpecialEffectHf>(file.NextLE<uint32_t>());
++	else if (item._iMagical == ITEM_QUALITY_UNIQUE && item._iUid == UITEM_KADISFURY)
++		item._iDamAcFlags = ItemSpecialEffectHf::FastWalk;
+ 	else
+ 		item._iDamAcFlags = ItemSpecialEffectHf::None;
+ 	UpdateHellfireFlag(item, item._iIName);
+@@ -2018,7 +2020,7 @@ void RemoveInvalidItem(Item &item)
+ 	if (!gbIsHellfire) {
+ 		isInvalid = isInvalid || (item._itype == ItemType::Staff && GetSpellStaffLevel(item._iSpell) == -1);
+ 		isInvalid = isInvalid || (item._iMiscId == IMISC_BOOK && GetSpellBookLevel(item._iSpell) == -1);
+-		isInvalid = isInvalid || item._iDamAcFlags != ItemSpecialEffectHf::None;
++		isInvalid = isInvalid || (item._iDamAcFlags != ItemSpecialEffectHf::None && item._iUid != UITEM_KADISFURY);
+ 		isInvalid = isInvalid || item._iPrePower > IPL_LASTDIABLO;
+ 		isInvalid = isInvalid || item._iSufPower > IPL_LASTDIABLO;
+ 	}
+diff --git a/Source/monster.cpp b/Source/monster.cpp
+index e091dac..0e734cb 100644
+--- a/Source/monster.cpp
++++ b/Source/monster.cpp
+@@ -831,7 +831,7 @@ void DiabloDeath(Monster &diablo, bool sendmsg)
+ 	if (sendmsg)
+ 		NetSendCmdQuest(true, quest);
+ 	sgbSaveSoundOn = gbSoundOn;
+-	gbProcessPlayers = false;
++	gbProcessPlayers = !gbIsMultiplayer;
+ 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
+ 		int monsterId = ActiveMonsters[i];
+ 		Monster &monster = Monsters[monsterId];
+@@ -866,6 +866,10 @@ void SpawnLoot(Monster &monster, bool sendmsg)
+ 		return;
+ 	}
+ 
++	if (monster.type().type == MT_CLEAVER) {
++		SpawnUnique(UITEM_KADISFURY, monster.position.tile, std::nullopt, sendmsg);
++	}
++
+ 	if (Quests[Q_GARBUD].IsAvailable() && monster.uniqueType == UniqueMonsterType::Garbud) {
+ 		CreateTypeItem(monster.position.tile + Displacement { 1, 1 }, true, ItemType::Mace, IMISC_NONE, sendmsg, false);
+ 	} else if (monster.uniqueType == UniqueMonsterType::Defiler) {
+@@ -1490,8 +1494,16 @@ void MonsterDeath(Monster &monster)
+ 			ViewPosition.y++;
+ 		}
+ 
+-		if (monster.var1 == 140)
++		if (monster.var1 == 140) {
++			if (!gbIsMultiplayer) {
++				AddMissile({ 0, 0 }, monster.position.tile, Direction::South, MissileID::DiabloApocalypseBoom, TARGET_BOTH, monster.getId(), 0, 0);
++				dMonster[monster.position.tile.x][monster.position.tile.y] = 0;
++				monster.isInvalid = true;
++				M_UpdateRelations(monster);
++			} else {
+ 				PrepDoEnding();
++			}
++		}
+ 	} else if (monster.animInfo.isLastFrame()) {
+ 		if (monster.isUnique())
+ 			AddCorpse(monster.position.tile, monster.corpseId, monster.direction);
+diff --git a/Source/player.cpp b/Source/player.cpp
+index 94246a2..8704c33 100644
+--- a/Source/player.cpp
++++ b/Source/player.cpp
+@@ -165,6 +165,17 @@ void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)
+ 	int8_t skippedFrames = -2;
+ 	if (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0)
+ 		skippedFrames = 2;
++	bool hasFastWalk = HasAnyOf(player.pDamAcFlags, ItemSpecialEffectHf::FastWalk);
++	if (!hasFastWalk) {
++		for (const auto &item : player.InvBody) {
++			if (!item.isEmpty() && item._iStatFlag && (HasAnyOf(item._iDamAcFlags, ItemSpecialEffectHf::FastWalk) || (item._iMagical == ITEM_QUALITY_UNIQUE && item._iUid == UITEM_KADISFURY))) {
++				hasFastWalk = true;
++				break;
++			}
++		}
++	}
++	if (hasFastWalk)
++		skippedFrames += 3;
+ 	if (pmWillBeCalled)
+ 		skippedFrames += 1;
+ 	NewPlrAnim(player, player_graphic::Walk, dir, AnimationDistributionFlags::ProcessAnimationPending, skippedFrames);
