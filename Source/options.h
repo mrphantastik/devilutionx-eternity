@@ -474,6 +474,10 @@ struct AudioOptions : OptionCategoryBase {
 	OptionEntryBoolean autoEquipSound;
 	/** @brief Picking up items emits the items pickup sound. */
 	OptionEntryBoolean itemPickupSound;
+	/** @brief Enable OpenAL EFX environmental reverb and wall occlusion in dungeons. */
+	OptionEntryBoolean efxReverb;
+	/** @brief Enable 3D binaural HRTF spatial audio for headphones. */
+	OptionEntryBoolean hrtf;
 
 	/** @brief Output sample rate (Hz). */
 	OptionEntryInt<std::uint32_t> sampleRate;

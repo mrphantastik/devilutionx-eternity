@@ -12,6 +12,7 @@
 #include "engine/sound_defs.hpp"
 #include "engine/sound_position.hpp"
 #include "init.h"
+#include "monster.h"
 #include "player.h"
 #include "utils/stdcompat/algorithm.hpp"
 #include "utils/str_cat.hpp"
@@ -969,7 +970,7 @@ TSFX sgSFX[] = {
 	// clang-format on
 };
 
-void StreamPlay(TSFX *pSFX, int lVolume, int lPan)
+void StreamPlay(TSFX *pSFX, int lVolume, int lPan, int deltaX = 0, int deltaY = 0, bool isPositional = false, bool applyReverb = false, bool isOccluded = false)
 {
 	assert(pSFX);
 	assert(pSFX->bFlags & sfx_STREAM);
@@ -981,7 +982,7 @@ void StreamPlay(TSFX *pSFX, int lVolume, int lPan)
 		if (pSFX->pSnd == nullptr)
 			pSFX->pSnd = sound_file_load(pSFX->pszName, AllowStreaming);
 		if (pSFX->pSnd->DSB.IsLoaded())
-			pSFX->pSnd->DSB.PlayWithVolumeAndPan(lVolume, sound_get_or_set_sound_volume(1), lPan);
+			pSFX->pSnd->DSB.PlayWith3D(lVolume, sound_get_or_set_sound_volume(1), lPan, deltaX, deltaY, isPositional, applyReverb, isOccluded);
 		sgpStreamSFX = pSFX;
 	}
 }
@@ -1012,8 +1013,19 @@ void PlaySfxPriv(TSFX *pSFX, bool loc, Point position)
 		return;
 	}
 
+	if (gbRunGame) {
+		UpdateSoundEnvironment(currlevel == 0 ? DTYPE_TOWN : leveltype);
+	}
+
+	const Point playerPos = (gbRunGame && MyPlayer != nullptr) ? Point { MyPlayer->position.tile } : Point { 0, 0 };
+	const Displacement delta = (loc && gbRunGame && MyPlayer != nullptr) ? (position - playerPos) : Displacement { 0, 0 };
+	const bool isUiOrInvSound = (pSFX->bFlags & sfx_UI) != 0 || (pSFX >= &sgSFX[IS_IANVL] && pSFX <= &sgSFX[IS_ISWORD]);
+	const bool applyReverb = gbRunGame && !isUiOrInvSound;
+	const bool isOccluded = loc && gbRunGame && currlevel != 0 && leveltype != DTYPE_TOWN && MyPlayer != nullptr
+	    && delta != Displacement { 0, 0 } && !LineClear(IsTileNotSolid, playerPos, position);
+
 	if ((pSFX->bFlags & sfx_STREAM) != 0) {
-		StreamPlay(pSFX, lVolume, lPan);
+		StreamPlay(pSFX, lVolume, lPan, delta.deltaX, delta.deltaY, loc, applyReverb && currlevel != 0, isOccluded);
 		return;
 	}
 
@@ -1021,7 +1033,7 @@ void PlaySfxPriv(TSFX *pSFX, bool loc, Point position)
 		pSFX->pSnd = sound_file_load(pSFX->pszName);
 
 	if (pSFX->pSnd != nullptr && pSFX->pSnd->DSB.IsLoaded())
-		snd_play_snd(pSFX->pSnd.get(), lVolume, lPan);
+		snd_play_snd_ex(pSFX->pSnd.get(), lVolume, lPan, delta.deltaX, delta.deltaY, loc, applyReverb, isOccluded);
 }
 
 _sfx_id RndSFX(_sfx_id psfx)
@@ -1157,11 +1169,11 @@ void sound_init()
 	} else {
 		switch (MyPlayer->_pClass) {
 		case HeroClass::Warrior:
-		case HeroClass::Barbarian:
 			mask |= sfx_WARRIOR;
 			break;
 		case HeroClass::Rogue:
 		case HeroClass::Bard:
+		case HeroClass::Barbarian:
 			mask |= sfx_ROGUE;
 			break;
 		case HeroClass::Sorcerer:

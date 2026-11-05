@@ -53,8 +53,15 @@ struct TSnd {
 extern bool gbSndInited;
 extern _music_id sgnMusicTrack;
 
+bool IsOpenAlActive();
+uint32_t GetOpenAlEfxSlot();
+uint32_t GetOpenAlOccludedDirectFilter();
+uint32_t GetOpenAlOccludedSendFilter();
+void UpdateSoundEnvironment(dungeon_type dungeonType);
+
 void ClearDuplicateSounds();
 void snd_play_snd(TSnd *pSnd, int lVolume, int lPan);
+void snd_play_snd_ex(TSnd *pSnd, int lVolume, int lPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded);
 std::unique_ptr<TSnd> sound_file_load(const char *path, bool stream = false);
 void snd_init();
 void snd_deinit();

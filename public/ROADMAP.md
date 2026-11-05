@@ -1,0 +1,31 @@
+# DX:Eternity Project Roadmap
+
+- [x] **Phase 1: Quality of Life & Endgame Loop**
+  - Open town shortcuts (Catacombs, Caves, Hell) from the start in Single Player
+  - Endless Single Player session after killing Diablo (no forced credits cut, full boss loot drop)
+- [x] **Phase 2: Custom Unique Weapon (`Kadi's Fury`) & Dungeon FastWalk**
+  - `Kadi's Fury` Unique Broad Sword with dungeon-only Faster Walk bonus
+  - Classic Diablo save/load compatibility for custom unique items
+- [x] **Phase 3: Hive & Crypt Dungeon Branches + Audio/FPS Optimizations**
+  - Second down-staircase on Caves Level 12 -> Hive (Levels 17–20)
+  - Second down-staircase on Hell Level 14 -> Crypt (Levels 21–24)
+  - Full save/load support for Levels 17–24 in classic Diablo mode
+  - Audio stream pooling & multi-tick animation SFX fixes
+- [x] **Phase 4: Classic Loot Filter & Hell Diablo Exclusive Uniques**
+  - Pure classic Diablo loot tables across Hive and Crypt (no oils, runes, or Hellfire-only base items)
+  - Suppress Defiler quest pop-up monologues on all Hive levels
+  - Hell Diablo exclusive unique weapon drops (`2%` independent chance each on Hell difficulty):
+    - `Kadi's Fury` (Broad Sword)
+    - `Apostate's Crook` (War Staff)
+    - `Loxley's Bend` (Long War Bow, with physical arrow life/mana steal support)
+- [x] **Phase 5: Female Barbarian Class**
+  - Playable Barbarian class using classic Rogue sprites, portraits, inventory silhouette, and voiceovers
+  - Full Barbarian stats, innate resistances, two-handed weapon mastery, and Rage skill
+- [x] **Phase 6: Hive & Crypt Monster Roster Overhaul**
+  - Keep unused vanilla monster models with original palettes (Spider Lords, Torchants, Bone Demons, Devil Kin Brutes, Invisible Lords, Satyr Lords)
+  - Replace remaining Hellfire monsters with matched vanilla dark-fantasy counterparts (including Magma Demons in the Hive and Mages in the Crypt) while keeping Hellfire projectiles
+  - Fix Na-Krul death freeze and loopback item validation warning
+- [x] **Phase 7: OpenAL Soft + EFX Spatial Audio, Reverb & HRTF**
+  - OpenAL Soft 1.23.1 static audio backend with `ALC_EXT_EFX` (`AL_EFFECT_EAXREVERB`) environmental reverb per dungeon type (Town, Cathedral, Catacombs, Caves, Hell, Hive, Crypt)
+  - EFX Low-Pass (`AL_FILTER_LOWPASS`) line-of-sight wall occlusion muffling in dungeons
+  - 3D isometric positional audio, surround sound, and binaural HRTF (`ALC_SOFT_HRTF` + `AL_SOFT_source_spatialize`) with in-game Audio menu toggles

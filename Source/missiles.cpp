@@ -210,7 +210,7 @@ bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, Miss
 
 	int hit = GenerateRnd(100);
 	int hper = 0;
-	const Player &player = Players[pnum];
+	Player &player = Players[pnum];
 	const MissileData &missileData = GetMissileData(t);
 	if (missileData.isArrow()) {
 		hper = player.GetRangedPiercingToHit();
@@ -256,6 +256,28 @@ bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, Miss
 		dam <<= 6;
 	if (resist)
 		dam >>= 2;
+
+	if (missileData.isArrow() && damageType == DamageType::Physical) {
+		int skdam = 0;
+		if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealLife3 | ItemSpecialEffect::StealLife5)) {
+			if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealLife3))
+				skdam = 3 * dam / 100;
+			if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealLife5))
+				skdam = 5 * dam / 100;
+			player._pHitPoints = std::min(player._pHitPoints + skdam, player._pMaxHP);
+			player._pHPBase = std::min(player._pHPBase + skdam, player._pMaxHPBase);
+			RedrawComponent(PanelDrawComponent::Health);
+		}
+		if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealMana3 | ItemSpecialEffect::StealMana5) && HasNoneOf(player._pIFlags, ItemSpecialEffect::NoMana)) {
+			if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealMana3))
+				skdam = 3 * dam / 100;
+			if (HasAnyOf(player._pIFlags, ItemSpecialEffect::StealMana5))
+				skdam = 5 * dam / 100;
+			player._pMana = std::min(player._pMana + skdam, player._pMaxMana);
+			player._pManaBase = std::min(player._pManaBase + skdam, player._pMaxManaBase);
+			RedrawComponent(PanelDrawComponent::Mana);
+		}
+	}
 
 	if (&player == MyPlayer)
 		ApplyMonsterDamage(damageType, monster, dam);

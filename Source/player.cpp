@@ -1565,8 +1565,8 @@ HeroClass GetPlayerSpriteClass(HeroClass cls)
 {
 	if (cls == HeroClass::Bard && !gbBard)
 		return HeroClass::Rogue;
-	if (cls == HeroClass::Barbarian && !gbBarbarian)
-		return HeroClass::Warrior;
+	if (cls == HeroClass::Barbarian)
+		return HeroClass::Rogue;
 	return cls;
 }
 
@@ -2281,7 +2281,7 @@ void SetPlrAnims(Player &player)
 	player._pSFrames = plrAtkAnimData.castingFrames;
 	player._pSFNum = plrAtkAnimData.castingActionFrame;
 	int armorGraphicIndex = player._pgfxnum & ~0xFU;
-	if (IsAnyOf(pc, HeroClass::Warrior, HeroClass::Barbarian)) {
+	if (pc == HeroClass::Warrior) {
 		if (gn == PlayerWeaponGraphic::Bow && leveltype != DTYPE_TOWN)
 			player._pNFrames = 8;
 		if (armorGraphicIndex > 0)
@@ -3494,18 +3494,6 @@ void PlayDungMsgs()
 		sfxdelay = 40;
 		sfxdnum = PS_DIABLVLINT;
 		myPlayer.pDungMsgs |= DungMsgDiablo;
-	} else if (!setlevel && currlevel == 17 && !myPlayer._pLvlVisited[17] && (myPlayer.pDungMsgs2 & 1) == 0) {
-		sfxdelay = 10;
-		sfxdnum = USFX_DEFILER1;
-		Quests[Q_DEFILER]._qactive = QUEST_ACTIVE;
-		Quests[Q_DEFILER]._qlog = true;
-		Quests[Q_DEFILER]._qmsg = TEXT_DEFILER1;
-		NetSendCmdQuest(true, Quests[Q_DEFILER]);
-		myPlayer.pDungMsgs2 |= 1;
-	} else if (!setlevel && currlevel == 19 && !myPlayer._pLvlVisited[19] && (myPlayer.pDungMsgs2 & 4) == 0) {
-		sfxdelay = 10;
-		sfxdnum = USFX_DEFILER3;
-		myPlayer.pDungMsgs2 |= 4;
 	} else if (!setlevel && currlevel == 21 && !myPlayer._pLvlVisited[21] && (myPlayer.pDungMsgs & 32) == 0) {
 		myPlayer.Say(HeroSpeech::ThisIsAPlaceOfGreatPower, 30);
 		myPlayer.pDungMsgs |= 32;

@@ -893,11 +893,19 @@ void SpawnLoot(Monster &monster, bool sendmsg)
 		CreateMagicWeapon(monster.position.tile, ItemType::Sword, ICURS_GREAT_SWORD, sendmsg, false);
 		CreateMagicWeapon(monster.position.tile, ItemType::Staff, ICURS_WAR_STAFF, sendmsg, false);
 		CreateMagicWeapon(monster.position.tile, ItemType::Bow, ICURS_LONG_WAR_BOW, sendmsg, false);
-		CreateSpellBook(monster.position.tile, SpellID::Apocalypse, sendmsg, false);
+		if (gbIsHellfire)
+			CreateSpellBook(monster.position.tile, SpellID::Apocalypse, sendmsg, false);
+		else
+			SpawnItem(monster, monster.position.tile, sendmsg);
 	} else if (!monster.isPlayerMinion()) {
 		SpawnItem(monster, monster.position.tile, sendmsg);
-		if (monster.type().type == MT_DIABLO && sgGameInitInfo.nDifficulty == DIFF_HELL && GenerateRnd(50) == 0) {
-			SpawnUnique(UITEM_KADISFURY, monster.position.tile + Displacement { 1, 1 }, std::nullopt, sendmsg);
+		if (monster.type().type == MT_DIABLO && sgGameInitInfo.nDifficulty == DIFF_HELL) {
+			if (GenerateRnd(50) == 0)
+				SpawnUnique(UITEM_KADISFURY, monster.position.tile + Displacement { 1, 1 }, std::nullopt, sendmsg);
+			if (GenerateRnd(50) == 0)
+				SpawnUnique(UITEM_APOSTATESCROOK, monster.position.tile + Displacement { -1, 1 }, std::nullopt, sendmsg);
+			if (GenerateRnd(50) == 0)
+				SpawnUnique(UITEM_LOXLEYSBEND, monster.position.tile + Displacement { 1, -1 }, std::nullopt, sendmsg);
 		}
 	}
 }
@@ -1073,7 +1081,7 @@ bool MonsterWalk(Monster &monster, MonsterMode variant)
 		M_StartStand(monster, monster.direction);
 	} else { // We didn't reach new tile so update monster's "sub-tile" position
 		if (monster.animInfo.tickCounterOfCurrentFrame == 0) {
-			if (monster.animInfo.currentFrame == 0 && monster.type().type == MT_FLESTHNG)
+			if (monster.animInfo.currentFrame == 0 && monster.type().type == MT_FLESTHNG && monster.data().hasSpecialSound)
 				PlayEffect(monster, MonsterSound::Special);
 		}
 	}
@@ -1934,7 +1942,7 @@ void AiRangedAvoidance(Monster &monster)
 	}
 
 	Direction md = GetDirection(monster.position.tile, monster.position.last);
-	if (IsAnyOf(monster.ai, MonsterAIID::Magma, MonsterAIID::Storm, MonsterAIID::BoneDemon) && monster.activeForTicks < UINT8_MAX)
+	if (IsAnyOf(monster.ai, MonsterAIID::Magma, MonsterAIID::Storm, MonsterAIID::BoneDemon, MonsterAIID::Psychorb, MonsterAIID::Necromorb) && monster.activeForTicks < UINT8_MAX)
 		MonstCheckDoors(monster);
 	int lessmissiles = (monster.ai == MonsterAIID::Acid) ? 1 : 0;
 	int dam = (monster.ai == MonsterAIID::Diablo) ? 40 : 0;
@@ -2673,7 +2681,10 @@ void CounselorAi(Monster &monster)
 		if (distanceToEnemy >= 2) {
 			if (v < 5 * (monster.intelligence + 10) && LineClearMissile(monster.position.tile, monster.enemyPosition)) {
 				constexpr MissileID MissileTypes[4] = { MissileID::Firebolt, MissileID::ChargedBolt, MissileID::LightningControl, MissileID::Fireball };
-				StartRangedAttack(monster, MissileTypes[monster.intelligence], monster.minDamage + GenerateRnd(monster.maxDamage - monster.minDamage + 1));
+				MissileID missileType = MissileTypes[monster.intelligence];
+				if (IsAnyOf(monster.ai, MonsterAIID::Psychorb, MonsterAIID::Necromorb, MonsterAIID::Lich, MonsterAIID::ArchLich))
+					missileType = GetMissileType(monster.ai);
+				StartRangedAttack(monster, missileType, monster.minDamage + GenerateRnd(monster.maxDamage - monster.minDamage + 1));
 			} else if (GenerateRnd(100) < 30) {
 				monster.goal = MonsterGoal::Move;
 				monster.goalVar1 = 0;
@@ -3039,10 +3050,10 @@ void (*AiProc[])(Monster &monster) = {
 	/*MonsterAIID::FireBat  */ &AiRanged,
 	/*MonsterAIID::Torchant */ &AiRanged,
 	/*MonsterAIID::HorkDemon  */ &HorkDemonAi,
-	/*MonsterAIID::Lich     */ &AiRanged,
-	/*MonsterAIID::ArchLich */ &AiRanged,
-	/*MonsterAIID::Psychorb */ &AiRanged,
-	/*MonsterAIID::Necromorb*/ &AiRanged,
+	/*MonsterAIID::Lich     */ &CounselorAi,
+	/*MonsterAIID::ArchLich */ &CounselorAi,
+	/*MonsterAIID::Psychorb */ &AiRangedAvoidance,
+	/*MonsterAIID::Necromorb*/ &AiRangedAvoidance,
 	/*MonsterAIID::BoneDemon*/ &AiRangedAvoidance
 };
 
@@ -3419,9 +3430,9 @@ void InitMonsterGFX(CMonster &monsterType)
 		InitMonsterTRN(monsterType);
 	}
 
-	if (IsAnyOf(mtype, MT_NMAGMA, MT_YMAGMA, MT_BMAGMA, MT_WMAGMA))
+	if (IsAnyOf(mtype, MT_NMAGMA, MT_YMAGMA, MT_BMAGMA, MT_WMAGMA) || monsterData.ai == MonsterAIID::Magma)
 		GetMissileSpriteData(MissileGraphicID::MagmaBall).LoadGFX();
-	if (IsAnyOf(mtype, MT_STORM, MT_RSTORM, MT_STORML, MT_MAEL))
+	if (IsAnyOf(mtype, MT_STORM, MT_RSTORM, MT_STORML, MT_MAEL) || monsterData.ai == MonsterAIID::Storm)
 		GetMissileSpriteData(MissileGraphicID::ThinLightning).LoadGFX();
 	if (mtype == MT_SNOWWICH) {
 		GetMissileSpriteData(MissileGraphicID::BloodStarBlue).LoadGFX();
@@ -3435,7 +3446,7 @@ void InitMonsterGFX(CMonster &monsterType)
 		GetMissileSpriteData(MissileGraphicID::BloodStarYellow).LoadGFX();
 		GetMissileSpriteData(MissileGraphicID::BloodStarYellowExplosion).LoadGFX();
 	}
-	if (IsAnyOf(mtype, MT_NACID, MT_RACID, MT_BACID, MT_XACID, MT_SPIDLORD)) {
+	if (IsAnyOf(mtype, MT_NACID, MT_RACID, MT_BACID, MT_XACID, MT_SPIDLORD) || monsterData.ai == MonsterAIID::Acid) {
 		GetMissileSpriteData(MissileGraphicID::Acid).LoadGFX();
 		GetMissileSpriteData(MissileGraphicID::AcidSplat).LoadGFX();
 		GetMissileSpriteData(MissileGraphicID::AcidPuddle).LoadGFX();
@@ -3722,7 +3733,7 @@ void MonsterDeath(Monster &monster, Direction md, bool sendmsg)
 	dMonster[monster.position.tile.x][monster.position.tile.y] = monster.getId() + 1;
 	CheckQuestKill(monster, sendmsg);
 	M_FallenFear(monster.position.tile);
-	if (IsAnyOf(monster.type().type, MT_NACID, MT_RACID, MT_BACID, MT_XACID, MT_SPIDLORD))
+	if (IsAnyOf(monster.type().type, MT_NACID, MT_RACID, MT_BACID, MT_XACID, MT_SPIDLORD, MT_ARACHNON, MT_HORKSPWN))
 		AddMissile(monster.position.tile, { 0, 0 }, Direction::South, MissileID::AcidPuddle, TARGET_PLAYERS, monster.getId(), monster.intelligence + 1, 0);
 }
 
@@ -3790,7 +3801,6 @@ void DoEnding()
 		play_movie("gendata\\diabvic1.smk", false);
 		break;
 	case HeroClass::Warrior:
-	case HeroClass::Barbarian:
 		play_movie("gendata\\diabvic2.smk", false);
 		break;
 	default:

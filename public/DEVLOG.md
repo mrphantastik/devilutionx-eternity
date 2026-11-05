@@ -126,3 +126,135 @@
   - Enabled floor potion initialization (`AddInitItems()`) on Nest and Crypt levels (`currlevel > 0 && currlevel != 16`) and gated `SpawnNote()` behind `gbIsHellfire`.
 - **File:** `Source/monster.cpp` — `SpawnLoot()`
   - Updated `UniqueMonsterType::Defiler` to drop a standard boss item (`SpawnItem(monster, ...)`) instead of the Hellfire-only `Cathedral Map` (`SpawnMapOfDoom`) when `!gbIsHellfire`.
+
+### 4.3 Additional Hell Diablo ~2% Exclusive Uniques (`Apostate's Crook` & `Loxley's Bend`)
+- **File:** `Source/items.h` & `Source/itemdat.h`
+  - Added `UITEM_APOSTATESCROOK = 111` and `UITEM_LOXLEYSBEND = 112` to `enum _unique_items`.
+  - Added `IPL_MAXDAM` to `enum item_effect_type` for flat maximum damage bonuses on unique weapons.
+- **File:** `Source/itemdat.cpp` — `UniqueItems[]`
+  - Added **Apostate's Crook** (`UITYPE_WARSTAFF`, War Staff base: Damage `8–16`, Durability `75`):
+    - `+2 to All Spell Levels` (`{ IPL_SPLLVLADD, 2, 2 }`)
+    - `+40 to Magic` (`{ IPL_MAG, 40, 40 }`)
+    - `+80 to Maximum Mana` (`{ IPL_MANA, 80, 80 }`)
+    - `Damage Reduced by 8` (`{ IPL_GETHIT, 8, 8 }`)
+    - `-50 to Armor Class` (`{ IPL_AC_CURSE, 50, 50 }`)
+    - `Resist All: -30%` (`{ IPL_ALLRES, -30, -30 }`)
+  - Added **Loxley's Bend** (`UITYPE_WARBOW`, Long War Bow base: Damage `1–14`, Durability `60`):
+    - `Knocks Target Back` (`{ IPL_KNOCKBACK }`)
+    - `+40 to Dexterity` (`{ IPL_DEX, 40, 40 }`)
+    - `+30 to Maximum Damage` (`{ IPL_MAXDAM, 30, 30 }`)
+    - `Steals 5% Mana` (`{ IPL_STEALMANA, 5, 5 }`)
+    - `-40% Light Radius` (`{ IPL_LIGHT_CURSE, 4, 4 }`)
+    - `-50 to Maximum Life` (`{ IPL_LIFE_CURSE, 50, 50 }`)
+- **File:** `Source/items.cpp`
+  - Handled `IPL_MAXDAM` in `SaveItemPower()` (`item._iMaxDam += r;`) and `PrintItemPower()` (`"{:+d} to maximum damage"`).
+  - Registered `UITEM_APOSTATESCROOK` and `UITEM_LOXLEYSBEND` alongside `UITEM_KADISFURY` in `CheckUnique()` (excluded from random world unique drops when `!recreate`), `GetUniqueItem()`, `SetupAllItems()`, `IsUniqueAvailable()`, and `SpawnUnique()`.
+- **File:** `Source/missiles.cpp` — `MonsterMHit()`
+  - Enabled `StealMana3`, `StealMana5`, `StealLife3`, and `StealLife5` on physical arrow hits (`missileData.isArrow() && damageType == DamageType::Physical`) so `Loxley's Bend` steals 5% mana on bow attacks.
+- **File:** `Source/monster.cpp` — `SpawnLoot()`
+  - Added independent `GenerateRnd(50) == 0` (`2%`) drop rolls for `UITEM_APOSTATESCROOK` and `UITEM_LOXLEYSBEND` alongside `UITEM_KADISFURY` when `monster.type().type == MT_DIABLO && sgGameInitInfo.nDifficulty == DIFF_HELL`.
+
+---
+
+## Phase 5: Female Barbarian Class (Rogue Visual & Audio Assets)
+
+### 5.1 Character Creation & Female UI Portrait
+- **File:** `Source/DiabloUI/hero/selhero.cpp` — `SelheroListSelect()` & `SelheroGenerateName()`
+  - Enabled `HeroClass::Barbarian` in character creation whenever `!gbIsSpawn` (without requiring `diablo.ini` test flags or `hfbarb.mpq`).
+  - Updated default prefill names for `HeroClass::Barbarian` to female warrior/shieldmaiden names (`"Sonya"`, `"Freya"`, `"Boudica"`, `"Astrid"`, `"Valkyrie"`, etc.).
+- **File:** `Source/DiabloUI/diabloui.cpp` — `LoadHeros()`
+  - Mapped `ArtHeroPortraitOrder[static_cast<std::size_t>(HeroClass::Barbarian)] = 1` and `ArtHeroOverrides[Barbarian]` to `HeroClass::Rogue` (`1`) so the Barbarian displays the female Rogue portrait in hero selection and save menus.
+- **File:** `Source/inv.cpp` — `InitInv()`
+  - Mapped `HeroClass::Barbarian` to `data\inv\inv_rog` so the inventory paperdoll displays the female Rogue silhouette.
+
+### 5.2 Rogue Sprites, Animations, Voice & Cinematics with Full Barbarian Mechanics
+- **File:** `Source/playerdat.cpp`
+  - Preserved all Barbarian stats and scaling (`baseStr=40, maxStr=255, baseMag=0, maxMag=0, baseDex=20, maxDex=55, baseVit=25, maxVit=150, blockBonus=30, itmLife=2.5x`, `SpellID::Rage`), innate resistance/two-handed weapon mastery, and starting equipment.
+  - Mapped `PlayersData[HeroClass::Barbarian].classPath` to `"rogue"`, `PlayersSpriteData[HeroClass::Barbarian]` to Rogue sprite widths (`bow=128`), and `PlayersAnimData[HeroClass::Barbarian]` to match the Rogue `.cl2` directional frame counts (`18` sword/mace/unarmed, `22` axe, `12` bow, `8` idle/walk, `4` block, `20` death, `16` cast) while retaining fast Barbarian melee hit-frame timing (`actionFrame = 8..9`).
+  - Replaced `herosounds[HeroClass::Barbarian]` with the female Rogue voice table (`PS_ROGUE1..PS_ROGUE102, PS_ROGUE71`).
+- **File:** `Source/player.cpp` & `Source/engine/trn.cpp`
+  - `GetPlayerSpriteClass(HeroClass::Barbarian)` unconditionally returns `HeroClass::Rogue` so `LoadPlrGFX()` loads `plrgfx\rogue\r*` `.cl2` sheets; `SetPlrAnims()` no longer applies the Warrior-only 15-frame armored death override to Barbarian; `GetClassTRN()` maps `HeroClass::Barbarian` to `plrgfx\rogue.trn`.
+- **File:** `Source/effects.cpp`, `Source/objects.cpp` & `Source/monster.cpp`
+  - `sound_init()` preloads `sfx_ROGUE` for `HeroClass::Barbarian` in Single Player; dungeon lore books and quest tomes (`AddCryptObject`, `OperateSChambBk`, `InitObjects`) use the Rogue's female voiceovers (`TEXT_RBOOKA..C`, `TEXT_RBONER`, `TEXT_RBLINDING`, `TEXT_RBLOODY`, `TEXT_RBLOODWAR`); defeating Diablo plays the female Rogue victory cinematic (`gendata\diabvic3.smk`).
+
+---
+
+## Phase 6: Na-Krul Death Freeze Fix, Defiler Monologue Suppression & Nest/Crypt Monster Roster Swap
+
+### 6.1 Na-Krul Death Freeze & Item Packet Validation Fix (Crypt Level 24 Boss)
+- **Root Cause (Freeze):** When `MT_NAKRUL` died (`Source/monster.cpp` — `SpawnLoot()`), it called `CreateSpellBook(monster.position.tile, SpellID::Apocalypse, sendmsg, false)`. In classic Diablo mode (`!gbIsHellfire`), `GetSpellBookLevel(SpellID::Apocalypse)` returns `-1`, meaning `SetupAllItems()` can never roll `SpellID::Apocalypse` on a generated book. Because `CreateSpellBook()` only checked `GetSpellBookLevel(ispell)` inside `if (gbIsHellfire)`, it spun in an infinite `while (true)` loop when `!gbIsHellfire`.
+- **Root Cause (Invalid Packet Chat Message):** When `CreateMagicWeapon` and `SpawnItem` dropped items on Crypt Level 24 (`ItemsGetCurrlevel() == 17`, `ilvl == 34`, or `MT_NAKRUL` `mlvl == 40`), `NetSendCmdPItem` validated the loopback `CMD_DROPITEM` packet via `IsPItemValid()` -> `IsDungeonItemValid()` / `IsUniqueMonsterItemValid()` (`Source/items/validation.cpp`). Because `!gbIsHellfire` (`isHellfireItem == false`), `IsDungeonItemValid()` capped valid dungeon `ilvl` at `15 * 2 = 30` and skipped `MT_NAKRUL` (`MonsterAvailability::Never`), printing `"Player '<Name>' sent an invalid packet."` in the chat log.
+- **File:** `Source/items.cpp` — `CreateSpellBook()` & `SpawnItem()`
+  - Moved the `int bookLvl = GetSpellBookLevel(ispell); if (bookLvl < 0) return;` guard outside `if (gbIsHellfire)` so any unrollable spell book ID returns immediately instead of hanging in an infinite loop.
+  - Included `MT_NAKRUL` alongside `MT_DIABLO` in `SpawnItem()` (`RndUItem(&monster)` and `uper = 15`).
+- **File:** `Source/items/validation.cpp` — `IsUniqueMonsterItemValid()` & `IsDungeonItemValid()`
+  - Allowed `MT_DIABLO`, `MT_NAKRUL`, `MT_DEFILER`, and `MT_HORKDMN` item levels in both `IsUniqueMonsterItemValid()` and `IsDungeonItemValid()`, and raised the dungeon container/weapon `ilvl` ceiling in `IsDungeonItemValid()` to `(24 - 7) * 2 = 34` unconditionally.
+- **File:** `Source/monster.cpp` — `SpawnLoot()`
+  - Updated `case MT_NAKRUL:` so when `!gbIsHellfire`, Na-Krul drops a standard boss item via `SpawnItem(monster, monster.position.tile, sendmsg)` instead of attempting to spawn Hellfire-only `SpellID::Apocalypse` and `Uber` items.
+
+### 6.2 Suppress Defiler Quest Monologues on Hive Levels
+- **File:** `Source/player.cpp` — `PlayDungMsgs()`
+  - Removed the `currlevel == 17` (`USFX_DEFILER1` / `TEXT_DEFILER1`) and `currlevel == 19` (`USFX_DEFILER3` / `TEXT_DEFILER3`) branches so the Defiler's quest pop-up monologues never trigger on any Hive level.
+
+### 6.3 Preserved Unused Vanilla Monster Families & Original Palettes
+- **File:** `Source/monstdat.cpp` & `Source/monster.cpp`
+  - **Spider Lord (`MT_ARACHNON`, `MT_SPIDLORD`):** Kept both variants in the Nest/Crypt roster and restored `MT_ARACHNON`'s sprite and palette from Hellfire's `wspidr\wspidr` back to the unused vanilla `bspidr\bspidr` (`MonsterAIID::Acid`, spitting acid projectiles and leaving an `AcidPuddle` on death).
+  - **Torchant (`MT_TORCHANT`):** Kept in Crypt (`dLvl 21–23`) with its original unused vanilla `fireman\fireman` assets (`trnFile = nullptr`) and `Fireball` ranged attack.
+  - **Bone Demon (`MT_SKLWING`, `MT_BONEDEMN`):** Kept both variants in Crypt (`dLvl 21–24`) and restored `MT_SKLWING`'s `trnFile` from `"monsters\\sklwing\\sklwx.trn"` to `nullptr` so both use their original vanilla `sklwing\sklwing` palette while keeping their `BoneDemon` projectile.
+  - **Devil Kin Brute (`MT_BIGFALL`):** Kept in Crypt (`dLvl 21–22`) with its original unused vanilla `bigfall\bigfall` assets (`trnFile = nullptr`).
+  - **Invisible Lord (`MT_FELLTWIN`, `MT_INVILORD`):** Kept `MT_FELLTWIN` (`dLvl 18–19`) and enabled `MT_INVILORD` (`MonsterAvailability::Retail`, `dLvl 22–23`, `soundSuffix = "newsfx\\ftwin"`) with their original unused vanilla `ftwin\ftwin` assets (`trnFile = nullptr`).
+  - **Satyr Lord (`MT_LRDSAYTR`):** Kept in Crypt (`dLvl 22–24`) with its original unused vanilla `goatlrd\goatlrd` assets (`trnFile = nullptr`).
+
+### 6.4 Matched Vanilla Monster Replacements & Preserved Hellfire Projectiles
+- **File:** `Source/monstdat.cpp` & `Source/monster.cpp`
+  - **Hive Casters -> Vanilla Magma Demons (`AiRangedAvoidance` with Hellfire Flare Projectiles):**
+    - Replaced `MT_PSYCHORB` (`dLvl 17–18`) and `MT_NECRMORB` (`dLvl 19–20`) in the Hive with vanilla `magma\magma` `"Blood Stone"` (`magma\yellow.trn`) and `"Hell Stone"` (`magma\blue.trn`) models while preserving their `MonsterAIID::Psychorb` (`BlueFlare`) and `MonsterAIID::Necromorb` (`RedFlare`) projectiles via `AiRangedAvoidance`.
+  - **Crypt Casters -> Vanilla Mages (`CounselorAi` with Hellfire Flare Projectiles):**
+    - Replaced `MT_LICH` (*Lich*) and `MT_ARCHLICH` (*Arch-Lich*) in the Crypt with vanilla `mage\mage` Counselor/Advocate models and palettes (`nullptr`, `mage\cnselbk.trn`) while routing `Lich` and `ArchLich` AIs through `CounselorAi` (`Source/monster.cpp`) with `GetMissileType(monster.ai)` (`OrangeFlare`, `YellowFlare`).
+  - **Hellfire Bats -> Vanilla Bats with Firebolt/Fireball Projectiles:**
+    - Replaced `MT_FIREBAT` and `MT_HELLBAT` with vanilla `bat\bat` (`Blink` / `Gloom` palettes) while keeping `MonsterAIID::Firebat` (`Firebolt`) and `MonsterAIID::Hellbat` (`Fireball`).
+  - **Remaining Nest & Crypt Monster Replacements:**
+    - `MT_UNRAV` -> `"Illusion Weaver"` (`sneak\sneak`, `sneakv1.trn`, `MonsterAIID::Sneak`)
+    - `MT_HELLBOAR` -> `"Obsidian Lord"` (`rhino\rhino`, `rhinob.trn`, `MonsterAIID::Rhino`)
+    - `MT_STINGER` -> `"Fire Drake"` (`snake\snake`, `snakr.trn`, `MonsterAIID::Snake`)
+    - `MT_HORKSPWN` -> `"Lava Maw"` (`acid\acid`, `acidr.trn`, `MonsterAIID::Acid`)
+    - `MT_VENMTAIL` -> `"Azure Drake"` (`snake\snake`, `snakb.trn`, `MonsterAIID::Snake`)
+    - `MT_LASHWORM` -> `"Maelstrom"` (`thin\thin`, `thinv1.trn`, `MonsterAIID::Storm`)
+    - `MT_HORKDMN` -> `"Balrog"` (`mega\mega`, `balr.trn`, `MonsterAIID::SkeletonMelee`)
+    - `MT_GRAVEDIG` -> `"Bone Gasher"` (`scav\scav`, `scavw.trn`, `MonsterAIID::Scavenger`)
+    - `MT_TOMBRAT` -> `"Horror Captain"` (`skelsd\sklsr`, `black.trn`, `MonsterAIID::SkeletonMelee`)
+    - `MT_CRYPTDMN` -> `"Lava Lord"` (`magma\magma`, `wierd.trn`, `MonsterAIID::Magma`)
+    - `MT_BICLOPS` -> `"Flayed One"` (`fat\fat`, `fatf.trn`, `MonsterAIID::SkeletonMelee`)
+    - `MT_FLESTHNG` -> `"Black Death"` (`zombie\zombie`, `yellow.trn`, `MonsterAIID::SkeletonMelee`)
+    - `MT_REAPER` -> `"Blood Knight"` (`black\black`, `blkkntbe.trn`, `MonsterAIID::SkeletonMelee`)
+  - Updated `AddMonsterType()` in `Source/monster.cpp` to preload `MagmaBall`, `ThinLightning`, and `Acid`/`AcidPuddle` missile graphics whenever `monsterData.ai` is `Magma`, `Storm`, or `Acid`.
+
+---
+
+## Phase 7: OpenAL Soft + EFX Extension, 3D Surround, Binaural HRTF & Wall Occlusion
+
+### 7.1 Static OpenAL Soft 1.23.1 Backend & Embedded HRTF Dataset
+- **File:** `Source/CMakeLists.txt`
+  - Statically linked `OpenAL::OpenAL` (`libOpenAL32.a` built with `ALSOFT_EMBED_HRTF_DATA=ON`, `ole32`, `uuid`, `winmm`) into `libdevilutionx` so `dx-eternity.exe` remains a single self-contained executable with embedded HRTF filters and full WASAPI/DirectSound/WinMM support.
+- **File:** `Source/options.h` & `Source/options.cpp`
+  - Raised `DEFAULT_AUDIO_SAMPLE_RATE` from `22050` to `48000` Hz and added in-game Audio Options toggles for **EFX Reverb** (`efxReverb`, default `ON`) and **Binaural HRTF** (`hrtf`, default `ON`).
+
+### 7.2 EFX Environmental Reverb Presets (`ALC_EXT_EFX` / `AL_EFFECT_EAXREVERB`) & Wall Occlusion
+- **File:** `Source/engine/sound.h` & `Source/engine/sound.cpp`
+  - Initialized an OpenAL Soft context (`ALC_STEREO_MODE_SOFT = ALC_EXTENDED_SOFT`, `ALC_HRTF_SOFT`, `ALC_MAX_AUXILIARY_SENDS = 2`) and EFX Auxiliary Effect Slot (`gEfxSlot`) backed by `AL_EFFECT_EAXREVERB`.
+  - Implemented `UpdateSoundEnvironment(dungeon_type)` using `<AL/efx-presets.h>` to dynamically reconfigure the EFX reverb tank per area:
+    - **Town (`DTYPE_TOWN`):** `EFX_REVERB_PRESET_OUTDOORS_BACKYARD` (subtle open-air reflections)
+    - **Cathedral (`DTYPE_CATHEDRAL`):** `EFX_REVERB_PRESET_CHAPEL` (Gothic stone arches & vaulted ceiling)
+    - **Catacombs (`DTYPE_CATACOMBS`):** `EFX_REVERB_PRESET_STONEROOM` (enclosed subterranean tombs)
+    - **Caves (`DTYPE_CAVES`):** `EFX_REVERB_PRESET_CAVE` (echoing natural rock caverns)
+    - **Hell (`DTYPE_HELL`):** `EFX_REVERB_PRESET_CATHEDRAL` (`flDecayTime = 3.5s`, `flDecayLFRatio = 1.25` — deep abyssal hall)
+    - **Hive (`DTYPE_NEST`):** `EFX_REVERB_PRESET_CAVE` (`flDecayTime = 1.5s`, `flDecayHFRatio = 0.35` — dampened organic tunnels)
+    - **Crypt (`DTYPE_CRYPT`):** `EFX_REVERB_PRESET_AUDITORIUM` (`flDecayTime = 3.1s`, `flDecayHFRatio = 0.92` — resonant stone crypt)
+  - Created EFX Low-Pass Filters (`gFilterOccludedDirect`: `AL_LOWPASS_GAIN = 0.58f, AL_LOWPASS_GAINHF = 0.22f`; `gFilterOccludedSend`: `AL_LOWPASS_GAIN = 0.85f, AL_LOWPASS_GAINHF = 0.45f`) applied whenever a dungeon sound's line-of-sight to the player (`LineClear(IsTileNotSolid, ...)`) is blocked by solid walls.
+
+### 7.3 Shared `ALuint` Buffers & Isometric 3D Spatialization (`AL_SOFT_source_spatialize`)
+- **File:** `Source/utils/soundsample.h`, `Source/utils/soundsample.cpp` & `Source/effects.cpp`
+  - Decoded WAV/MP3 sound effects into shared `OpenAlBuffer` (`ALuint`) objects so `DuplicateFrom()` shares the decoded PCM buffer in `O(1)` without re-decoding or allocating resamplers.
+  - Mapped isometric tile offsets `(deltaX, deltaY)` into listener-relative 3D space with an elevated listener depth offset (`z = isoY * 0.75f - 2.2f`) and enabled `AL_SOURCE_SPATIALIZE_SOFT = AL_TRUE` so both mono and stereo SFX spatialize smoothly across 5.1/7.1 surround speakers and binaural HRTF headphones without harsh 180° front/back flips in melee range.
+
+

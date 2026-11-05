@@ -1054,6 +1054,9 @@ int SaveItemPower(const Player &player, Item &item, ItemPower &power)
 	case IPL_FASTWALK:
 		item._iDamAcFlags |= ItemSpecialEffectHf::FastWalk;
 		break;
+	case IPL_MAXDAM:
+		item._iMaxDam += r;
+		break;
 	default:
 		break;
 	}
@@ -1464,7 +1467,7 @@ _unique_items CheckUnique(Item &item, int lvl, int uper, bool recreate)
 	for (int j = 0; UniqueItems[j].UIItemId != UITYPE_INVALID; j++) {
 		if (!IsUniqueAvailable(j))
 			continue;
-		if (!recreate && j == UITEM_KADISFURY)
+		if (!recreate && IsAnyOf(j, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND))
 			continue;
 		if (UniqueItems[j].UIItemId == AllItemsList[item.IDidx].iItemId
 		    && lvl >= UniqueItems[j].UIMinLvl
@@ -1502,7 +1505,7 @@ void GetUniqueItem(const Player &player, Item &item, _unique_items uid)
 	CopyUtf8(item._iIName, UniqueItems[uid].UIName, sizeof(item._iIName));
 	item._iIvalue = UniqueItems[uid].UIValue;
 
-	if (item._iMiscId == IMISC_UNIQUE || uid == UITEM_KADISFURY)
+	if (item._iMiscId == IMISC_UNIQUE || IsAnyOf(uid, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND))
 		item._iSeed = uid;
 
 	item._iUid = uid;
@@ -1547,7 +1550,7 @@ void SetupAllItems(const Player &player, Item &item, _item_indexes idx, uint32_t
 	else if (uper == 1)
 		item._iCreateInfo |= CF_UPER1;
 
-	if (item._iMiscId != IMISC_UNIQUE && !(recreate && iseed == UITEM_KADISFURY)) {
+	if (item._iMiscId != IMISC_UNIQUE && !(recreate && IsAnyOf(iseed, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND))) {
 		int iblvl = GetItemBLevel(lvl, item._iMiscId, onlygood, uper == 15);
 		if (iblvl != -1) {
 			_unique_items uid = CheckUnique(item, iblvl, uper, recreate);
@@ -1561,7 +1564,7 @@ void SetupAllItems(const Player &player, Item &item, _item_indexes idx, uint32_t
 			ItemRndDur(item);
 	} else {
 		if (item._iLoc != ILOC_UNEQUIPABLE) {
-			if (iseed > UITEM_KADISFURY || AllItemsList[static_cast<size_t>(idx)].iItemId != UniqueItems[iseed].UIItemId) {
+			if (iseed > UITEM_LOXLEYSBEND || AllItemsList[static_cast<size_t>(idx)].iItemId != UniqueItems[iseed].UIItemId) {
 				item.clear();
 				return;
 			}
@@ -2494,7 +2497,7 @@ uint8_t GetOutlineColor(const Item &item, bool checkReq)
 
 bool IsUniqueAvailable(int i)
 {
-	return gbIsHellfire || i <= 89 || i == UITEM_KADISFURY;
+	return gbIsHellfire || i <= 89 || IsAnyOf(i, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND);
 }
 
 void ClearUniqueItemFlags()
@@ -3256,7 +3259,7 @@ Item *SpawnUnique(_unique_items uid, Point position, std::optional<int> level /*
 	while (AllItemsList[idx].iItemId != UniqueItems[uid].UIItemId)
 		idx++;
 
-	if (sgGameInitInfo.nDifficulty == DIFF_NORMAL || uid == UITEM_KADISFURY) {
+	if (sgGameInitInfo.nDifficulty == DIFF_NORMAL || IsAnyOf(uid, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND)) {
 		GetItemAttrs(item, static_cast<_item_indexes>(idx), curlv);
 		item._iCreateInfo = curlv;
 		GetUniqueItem(*MyPlayer, item, uid);
@@ -3290,7 +3293,7 @@ void SpawnItem(Monster &monster, Point position, bool sendmsg, bool spawn /*= fa
 		if (uniqueItem != nullptr && sendmsg)
 			NetSendCmdPItem(false, CMD_DROPITEM, uniqueItem->position, *uniqueItem);
 		return;
-	} else if (monster.isUnique() || dropsSpecialTreasure || monster.type().type == MT_DIABLO) {
+	} else if (monster.isUnique() || dropsSpecialTreasure || IsAnyOf(monster.type().type, MT_DIABLO, MT_NAKRUL)) {
 		// Unqiue monster is killed => use better item base (for example no gold)
 		idx = RndUItem(&monster);
 	} else if (dropBrain && !gbIsMultiplayer) {
@@ -3324,7 +3327,7 @@ void SpawnItem(Monster &monster, Point position, bool sendmsg, bool spawn /*= fa
 	int ii = AllocateItem();
 	auto &item = Items[ii];
 	GetSuperItemSpace(position, ii);
-	int uper = (monster.isUnique() || monster.type().type == MT_DIABLO) ? 15 : 1;
+	int uper = (monster.isUnique() || IsAnyOf(monster.type().type, MT_DIABLO, MT_NAKRUL)) ? 15 : 1;
 
 	int8_t mLevel = monster.data().level;
 
@@ -3931,6 +3934,8 @@ bool DoOil(Player &player, int cii)
 		return _("40% Health moved to Mana");
 	case IPL_FASTWALK:
 		return _("faster walk");
+	case IPL_MAXDAM:
+		return fmt::format(fmt::runtime(_("{:+d} to maximum damage")), item._iMaxDam - AllItemsList[item.IDidx].iMaxDam);
 	default:
 		return _("Another ability (NW)");
 	}
@@ -4536,13 +4541,14 @@ int ItemNoFlippy()
 
 void CreateSpellBook(Point position, SpellID ispell, bool sendmsg, bool delta)
 {
-	int lvl = currlevel;
+	int bookLvl = GetSpellBookLevel(ispell);
+	if (bookLvl < 0) {
+		return;
+	}
 
+	int lvl = currlevel;
 	if (gbIsHellfire) {
-		lvl = GetSpellBookLevel(ispell) + 1;
-		if (lvl < 1) {
-			return;
-		}
+		lvl = bookLvl + 1;
 	}
 
 	_item_indexes idx = RndTypeItems(ItemType::Misc, IMISC_BOOK, lvl);

@@ -695,10 +695,10 @@ void AddCryptObject(Object &object, int a2)
 		case 6:
 			switch (myPlayer._pClass) {
 			case HeroClass::Warrior:
-			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_BOOKA;
 				break;
 			case HeroClass::Rogue:
+			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_RBOOKA;
 				break;
 			case HeroClass::Sorcerer:
@@ -715,10 +715,10 @@ void AddCryptObject(Object &object, int a2)
 		case 7:
 			switch (myPlayer._pClass) {
 			case HeroClass::Warrior:
-			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_BOOKB;
 				break;
 			case HeroClass::Rogue:
+			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_RBOOKB;
 				break;
 			case HeroClass::Sorcerer:
@@ -735,10 +735,10 @@ void AddCryptObject(Object &object, int a2)
 		case 8:
 			switch (myPlayer._pClass) {
 			case HeroClass::Warrior:
-			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_BOOKC;
 				break;
 			case HeroClass::Rogue:
+			case HeroClass::Barbarian:
 				object._oVar2 = TEXT_RBOOKC;
 				break;
 			case HeroClass::Sorcerer:
@@ -2101,10 +2101,8 @@ void OperateChamberOfBoneBook(Object &questBook, bool sendmsg)
 		textdef = TEXT_HBONER;
 		break;
 	case HeroClass::Bard:
-		textdef = TEXT_RBONER;
-		break;
 	case HeroClass::Barbarian:
-		textdef = TEXT_BONER;
+		textdef = TEXT_RBONER;
 		break;
 	}
 	if (sendmsg) {
@@ -3967,10 +3965,8 @@ void InitObjects()
 					spId = TEXT_HBLINDING;
 					break;
 				case HeroClass::Bard:
-					spId = TEXT_RBLINDING;
-					break;
 				case HeroClass::Barbarian:
-					spId = TEXT_BLINDING;
+					spId = TEXT_RBLINDING;
 					break;
 				}
 				Quests[Q_BLIND]._qmsg = spId;
@@ -3993,10 +3989,8 @@ void InitObjects()
 					spId = TEXT_HBLOODY;
 					break;
 				case HeroClass::Bard:
-					spId = TEXT_RBLOODY;
-					break;
 				case HeroClass::Barbarian:
-					spId = TEXT_BLOODY;
+					spId = TEXT_RBLOODY;
 					break;
 				}
 				Quests[Q_BLOOD]._qmsg = spId;
@@ -4026,10 +4020,8 @@ void InitObjects()
 					spId = TEXT_HBLOODWAR;
 					break;
 				case HeroClass::Bard:
-					spId = TEXT_RBLOODWAR;
-					break;
 				case HeroClass::Barbarian:
-					spId = TEXT_BLOODWAR;
+					spId = TEXT_RBLOODWAR;
 					break;
 				}
 				Quests[Q_WARLORD]._qmsg = spId;

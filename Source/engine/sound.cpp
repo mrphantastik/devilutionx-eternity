@@ -1,15 +1,28 @@
 /**
  * @file sound.cpp
  *
- * Implementation of functions setting up the audio pipeline.
+ * Implementation of functions setting up the audio pipeline (OpenAL Soft + EFX + HRTF).
  */
+#ifndef AL_LIBTYPE_STATIC
+#define AL_LIBTYPE_STATIC
+#endif
+#ifndef AL_ALEXT_PROTOTYPES
+#define AL_ALEXT_PROTOTYPES
+#endif
+
 #include "engine/sound.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <mutex>
 
+#include <AL/al.h>
+#include <AL/alc.h>
+#include <AL/alext.h>
+#include <AL/efx-presets.h>
+#include <AL/efx.h>
 #include <SDL.h>
 
 #include "engine/assets.hpp"
@@ -35,6 +48,168 @@ bool gbMusicOn = true;
 bool gbSoundOn = true;
 
 namespace {
+
+ALCdevice *gAlDevice = nullptr;
+ALCcontext *gAlContext = nullptr;
+ALuint gEfxSlot = 0;
+ALuint gEfxEffect = 0;
+ALuint gFilterOccludedDirect = 0;
+ALuint gFilterOccludedSend = 0;
+dungeon_type gActiveReverbDungeon = DTYPE_NONE;
+
+void LoadEaxReverbPreset(ALuint effect, const EFXEAXREVERBPROPERTIES &preset, float gainScale)
+{
+	alGetError();
+	alEffecti(effect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
+	if (alGetError() == AL_NO_ERROR) {
+		alEffectf(effect, AL_EAXREVERB_DENSITY, preset.flDensity);
+		alEffectf(effect, AL_EAXREVERB_DIFFUSION, preset.flDiffusion);
+		alEffectf(effect, AL_EAXREVERB_GAIN, clamp(preset.flGain * gainScale, 0.0F, 1.0F));
+		alEffectf(effect, AL_EAXREVERB_GAINHF, preset.flGainHF);
+		alEffectf(effect, AL_EAXREVERB_GAINLF, preset.flGainLF);
+		alEffectf(effect, AL_EAXREVERB_DECAY_TIME, preset.flDecayTime);
+		alEffectf(effect, AL_EAXREVERB_DECAY_HFRATIO, preset.flDecayHFRatio);
+		alEffectf(effect, AL_EAXREVERB_DECAY_LFRATIO, preset.flDecayLFRatio);
+		alEffectf(effect, AL_EAXREVERB_REFLECTIONS_GAIN, preset.flReflectionsGain);
+		alEffectf(effect, AL_EAXREVERB_REFLECTIONS_DELAY, preset.flReflectionsDelay);
+		alEffectfv(effect, AL_EAXREVERB_REFLECTIONS_PAN, preset.flReflectionsPan);
+		alEffectf(effect, AL_EAXREVERB_LATE_REVERB_GAIN, preset.flLateReverbGain);
+		alEffectf(effect, AL_EAXREVERB_LATE_REVERB_DELAY, preset.flLateReverbDelay);
+		alEffectfv(effect, AL_EAXREVERB_LATE_REVERB_PAN, preset.flLateReverbPan);
+		alEffectf(effect, AL_EAXREVERB_ECHO_TIME, preset.flEchoTime);
+		alEffectf(effect, AL_EAXREVERB_ECHO_DEPTH, preset.flEchoDepth);
+		alEffectf(effect, AL_EAXREVERB_MODULATION_TIME, preset.flModulationTime);
+		alEffectf(effect, AL_EAXREVERB_MODULATION_DEPTH, preset.flModulationDepth);
+		alEffectf(effect, AL_EAXREVERB_AIR_ABSORPTION_GAINHF, preset.flAirAbsorptionGainHF);
+		alEffectf(effect, AL_EAXREVERB_HFREFERENCE, preset.flHFReference);
+		alEffectf(effect, AL_EAXREVERB_LFREFERENCE, preset.flLFReference);
+		alEffectf(effect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, preset.flRoomRolloffFactor);
+		alEffecti(effect, AL_EAXREVERB_DECAY_HFLIMIT, preset.iDecayHFLimit);
+		return;
+	}
+
+	alEffecti(effect, AL_EFFECT_TYPE, AL_EFFECT_REVERB);
+	alEffectf(effect, AL_REVERB_DENSITY, preset.flDensity);
+	alEffectf(effect, AL_REVERB_DIFFUSION, preset.flDiffusion);
+	alEffectf(effect, AL_REVERB_GAIN, clamp(preset.flGain * gainScale, 0.0F, 1.0F));
+	alEffectf(effect, AL_REVERB_GAINHF, preset.flGainHF);
+	alEffectf(effect, AL_REVERB_DECAY_TIME, preset.flDecayTime);
+	alEffectf(effect, AL_REVERB_DECAY_HFRATIO, preset.flDecayHFRatio);
+	alEffectf(effect, AL_REVERB_REFLECTIONS_GAIN, preset.flReflectionsGain);
+	alEffectf(effect, AL_REVERB_REFLECTIONS_DELAY, preset.flReflectionsDelay);
+	alEffectf(effect, AL_REVERB_LATE_REVERB_GAIN, preset.flLateReverbGain);
+	alEffectf(effect, AL_REVERB_LATE_REVERB_DELAY, preset.flLateReverbDelay);
+	alEffectf(effect, AL_REVERB_AIR_ABSORPTION_GAINHF, preset.flAirAbsorptionGainHF);
+	alEffectf(effect, AL_REVERB_ROOM_ROLLOFF_FACTOR, preset.flRoomRolloffFactor);
+	alEffecti(effect, AL_REVERB_DECAY_HFLIMIT, preset.iDecayHFLimit);
+}
+
+void InitOpenAl()
+{
+	const std::string devOpt = *sgOptions.Audio.device;
+	gAlDevice = alcOpenDevice(devOpt.empty() ? nullptr : devOpt.c_str());
+	if (gAlDevice == nullptr && !devOpt.empty()) {
+		gAlDevice = alcOpenDevice(nullptr);
+	}
+	if (gAlDevice == nullptr) {
+		LogError(LogCategory::Audio, "Failed to open OpenAL audio device");
+		return;
+	}
+
+	const ALCint sampleRate = static_cast<ALCint>(std::max<std::uint32_t>(*sgOptions.Audio.sampleRate, 44100U));
+	const ALCint attrs[] = {
+		ALC_FREQUENCY, sampleRate,
+		ALC_MAX_AUXILIARY_SENDS, 2,
+		ALC_HRTF_SOFT, *sgOptions.Audio.hrtf ? ALC_TRUE : ALC_FALSE,
+		0, 0
+	};
+
+	gAlContext = alcCreateContext(gAlDevice, attrs);
+	if (gAlContext == nullptr || alcMakeContextCurrent(gAlContext) == ALC_FALSE) {
+		LogError(LogCategory::Audio, "Failed to create or activate OpenAL context");
+		if (gAlContext != nullptr) {
+			alcDestroyContext(gAlContext);
+			gAlContext = nullptr;
+		}
+		alcCloseDevice(gAlDevice);
+		gAlDevice = nullptr;
+		return;
+	}
+
+	const ALfloat listenerOri[] = { 0.0F, 0.0F, -1.0F, 0.0F, 1.0F, 0.0F };
+	alListener3f(AL_POSITION, 0.0F, 0.0F, 0.0F);
+	alListener3f(AL_VELOCITY, 0.0F, 0.0F, 0.0F);
+	alListenerfv(AL_ORIENTATION, listenerOri);
+
+	if (alcIsExtensionPresent(gAlDevice, "ALC_EXT_EFX") == ALC_TRUE) {
+		alGetError();
+		alGenAuxiliaryEffectSlots(1, &gEfxSlot);
+		alGenEffects(1, &gEfxEffect);
+		if (alGetError() != AL_NO_ERROR) {
+			gEfxSlot = 0;
+			gEfxEffect = 0;
+		} else {
+			alAuxiliaryEffectSlotf(gEfxSlot, AL_EFFECTSLOT_GAIN, 1.0F);
+			alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_AUXILIARY_SEND_AUTO, AL_TRUE);
+		}
+
+		alGenFilters(1, &gFilterOccludedDirect);
+		if (alGetError() == AL_NO_ERROR && gFilterOccludedDirect != 0) {
+			alFilteri(gFilterOccludedDirect, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAIN, 0.58F);
+			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAINHF, 0.22F);
+		} else {
+			gFilterOccludedDirect = 0;
+		}
+
+		alGenFilters(1, &gFilterOccludedSend);
+		if (alGetError() == AL_NO_ERROR && gFilterOccludedSend != 0) {
+			alFilteri(gFilterOccludedSend, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+			alFilterf(gFilterOccludedSend, AL_LOWPASS_GAIN, 0.85F);
+			alFilterf(gFilterOccludedSend, AL_LOWPASS_GAINHF, 0.45F);
+		} else {
+			gFilterOccludedSend = 0;
+		}
+
+		gActiveReverbDungeon = DTYPE_NONE;
+		UpdateSoundEnvironment(DTYPE_TOWN);
+	}
+}
+
+void DeinitOpenAl()
+{
+	if (gAlContext == nullptr && gAlDevice == nullptr)
+		return;
+
+	if (gFilterOccludedDirect != 0) {
+		alDeleteFilters(1, &gFilterOccludedDirect);
+		gFilterOccludedDirect = 0;
+	}
+	if (gFilterOccludedSend != 0) {
+		alDeleteFilters(1, &gFilterOccludedSend);
+		gFilterOccludedSend = 0;
+	}
+	if (gEfxSlot != 0) {
+		alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL);
+		alDeleteAuxiliaryEffectSlots(1, &gEfxSlot);
+		gEfxSlot = 0;
+	}
+	if (gEfxEffect != 0) {
+		alDeleteEffects(1, &gEfxEffect);
+		gEfxEffect = 0;
+	}
+
+	alcMakeContextCurrent(nullptr);
+	if (gAlContext != nullptr) {
+		alcDestroyContext(gAlContext);
+		gAlContext = nullptr;
+	}
+	if (gAlDevice != nullptr) {
+		alcCloseDevice(gAlDevice);
+		gAlDevice = nullptr;
+	}
+	gActiveReverbDungeon = DTYPE_NONE;
+}
 
 SoundSample music;
 
@@ -109,14 +284,14 @@ bool LoadAudioFile(const char *path, bool stream, bool errorDialog, SoundSample 
 
 std::list<std::unique_ptr<SoundSample>> duplicateSounds;
 std::optional<SdlMutex> duplicateSoundsMutex;
-constexpr size_t MaxActiveDuplicateSounds = 8;
-constexpr size_t MaxPooledDuplicateSounds = 24;
+constexpr size_t MaxActiveDuplicateSounds = 32;
+constexpr size_t MaxPooledDuplicateSounds = 64;
 uint32_t lastDuplicateTick = 0;
 
 SoundSample *DuplicateSound(const SoundSample &sound)
 {
 	const uint32_t tc = SDL_GetTicks();
-	if (tc - lastDuplicateTick < 15) {
+	if (tc - lastDuplicateTick < 5) {
 		return nullptr;
 	}
 
@@ -193,13 +368,93 @@ int CapVolume(int volume)
 
 } // namespace
 
+bool IsOpenAlActive()
+{
+	return gAlContext != nullptr;
+}
+
+uint32_t GetOpenAlEfxSlot()
+{
+	return gEfxSlot;
+}
+
+uint32_t GetOpenAlOccludedDirectFilter()
+{
+	return gFilterOccludedDirect;
+}
+
+uint32_t GetOpenAlOccludedSendFilter()
+{
+	return gFilterOccludedSend;
+}
+
+void UpdateSoundEnvironment(dungeon_type dungeonType)
+{
+	if (!IsOpenAlActive() || gEfxSlot == 0 || gEfxEffect == 0)
+		return;
+	if (gActiveReverbDungeon == dungeonType)
+		return;
+
+	gActiveReverbDungeon = dungeonType;
+
+	EFXEAXREVERBPROPERTIES preset = EFX_REVERB_PRESET_GENERIC;
+	float gainScale = 0.80F;
+
+	switch (dungeonType) {
+	case DTYPE_TOWN:
+		preset = EFX_REVERB_PRESET_OUTDOORS_BACKYARD;
+		gainScale = 0.45F;
+		break;
+	case DTYPE_CATHEDRAL:
+		preset = EFX_REVERB_PRESET_CHAPEL;
+		gainScale = 0.82F;
+		break;
+	case DTYPE_CATACOMBS:
+		preset = EFX_REVERB_PRESET_STONEROOM;
+		gainScale = 0.88F;
+		break;
+	case DTYPE_CAVES:
+		preset = EFX_REVERB_PRESET_CAVE;
+		gainScale = 0.88F;
+		break;
+	case DTYPE_HELL:
+		preset = EFX_REVERB_PRESET_CASTLE_LARGEROOM;
+		preset.flDecayTime = 3.5F;
+		preset.flDecayLFRatio = 1.25F;
+		gainScale = 0.92F;
+		break;
+	case DTYPE_NEST:
+		preset = EFX_REVERB_PRESET_CAVE;
+		preset.flDecayTime = 1.50F;
+		preset.flDecayHFRatio = 0.35F;
+		preset.flDiffusion = 0.75F;
+		gainScale = 0.78F;
+		break;
+	case DTYPE_CRYPT:
+		preset = EFX_REVERB_PRESET_AUDITORIUM;
+		preset.flDecayTime = 3.10F;
+		preset.flDecayHFRatio = 0.92F;
+		gainScale = 0.88F;
+		break;
+	default:
+		preset = EFX_REVERB_PRESET_OUTDOORS_BACKYARD;
+		gainScale = 0.40F;
+		break;
+	}
+
+	LoadEaxReverbPreset(gEfxEffect, preset, gainScale);
+	alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_EFFECT, static_cast<ALint>(gEfxEffect));
+}
+
 void ClearDuplicateSounds()
 {
+	if (!duplicateSoundsMutex)
+		return;
 	const std::lock_guard<SdlMutex> lock(*duplicateSoundsMutex);
 	duplicateSounds.clear();
 }
 
-void snd_play_snd(TSnd *pSnd, int lVolume, int lPan)
+void snd_play_snd_ex(TSnd *pSnd, int lVolume, int lPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded)
 {
 	if (pSnd == nullptr || !gbSoundOn) {
 		return;
@@ -217,8 +472,13 @@ void snd_play_snd(TSnd *pSnd, int lVolume, int lPan)
 			return;
 	}
 
-	sound->PlayWithVolumeAndPan(lVolume, *sgOptions.Audio.soundVolume, lPan);
+	sound->PlayWith3D(lVolume, *sgOptions.Audio.soundVolume, lPan, deltaX, deltaY, isPositional, applyReverb, isOccluded);
 	pSnd->start_tc = tc;
+}
+
+void snd_play_snd(TSnd *pSnd, int lVolume, int lPan)
+{
+	snd_play_snd_ex(pSnd, lVolume, lPan, 0, 0, false, false, false);
 }
 
 std::unique_ptr<TSnd> sound_file_load(const char *path, bool stream)
@@ -247,15 +507,15 @@ void snd_init()
 	sgOptions.Audio.musicVolume.SetValue(CapVolume(*sgOptions.Audio.musicVolume));
 	gbMusicOn = *sgOptions.Audio.musicVolume > VOLUME_MIN;
 
-	// Initialize the SDL_audiolib library. Set the output sample rate to
-	// 22kHz, the audio format to 16-bit signed, use 2 output channels
-	// (stereo), and a 2KiB output buffer.
+	// Initialize OpenAL Soft (3D spatialization, Binaural HRTF, and EFX environmental reverb)
+	InitOpenAl();
+
+	// Initialize SDL_audiolib for streaming music and Smacker video playback
 	if (!Aulib::init(*sgOptions.Audio.sampleRate, AUDIO_S16, *sgOptions.Audio.channels, *sgOptions.Audio.bufferSize, *sgOptions.Audio.device)) {
 		LogError(LogCategory::Audio, "Failed to initialize audio (Aulib::init): {}", SDL_GetError());
-		return;
+		if (!IsOpenAlActive())
+			return;
 	}
-	LogVerbose(LogCategory::Audio, "Aulib sampleRate={} channels={} frameSize={} format={:#x}",
-	    Aulib::sampleRate(), Aulib::channelCount(), Aulib::frameSize(), Aulib::sampleFormat());
 
 	duplicateSoundsMutex.emplace();
 	gbSndInited = true;
@@ -264,6 +524,9 @@ void snd_init()
 void snd_deinit()
 {
 	if (gbSndInited) {
+		music.Release();
+		ClearDuplicateSounds();
+		DeinitOpenAl();
 		Aulib::quit();
 		duplicateSoundsMutex = std::nullopt;
 	}

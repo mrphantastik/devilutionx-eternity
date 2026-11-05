@@ -545,6 +545,7 @@ enum item_effect_type : int8_t {
 	IPL_MANATOLIFE,
 	IPL_LIFETOMANA,
 	IPL_FASTWALK,
+	IPL_MAXDAM,
 	IPL_INVALID = -1,
 };
 
