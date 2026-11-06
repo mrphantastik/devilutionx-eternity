@@ -17,7 +17,7 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 
 ### 🗺️ Seamless Dungeon Branches: Hive & Crypt
 Instead of accessing expansion areas through separate town portals or gimmicky triggers, *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
-* **The Hive (Levels 17–20):** Accessible via a hidden downward stairway on **Caves Level 12**.
+* **The Hive (Levels 17–20):** Accessible via a downward stairway on **Caves Level 12**.
 * **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
 * **Classic Itemization:** Both branches utilize pure vanilla Diablo I drop and affix tables.
 * **Atmospheric Enemy Reskinning:** Out-of-place and cartoonish *Hellfire* sprites have been replaced with gritty, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
