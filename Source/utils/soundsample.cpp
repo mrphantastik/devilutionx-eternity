@@ -20,6 +20,8 @@
 #include <AL/efx.h>
 #include <Aulib/DecoderDrmp3.h>
 #include <Aulib/DecoderDrwav.h>
+#include <../3rdparty/dr_libs/dr_mp3.h>
+#include <../3rdparty/dr_libs/dr_wav.h>
 #include <SDL.h>
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
@@ -38,15 +40,19 @@
 namespace devilution {
 
 struct OpenAlBuffer {
-	ALuint id = 0;
+	ALuint monoId = 0;
+	ALuint stereoId = 0;
 	int durationMs = 0;
 	int channels = 1;
 	int sampleRate = 22050;
 
 	~OpenAlBuffer()
 	{
-		if (id != 0 && IsOpenAlActive()) {
-			alDeleteBuffers(1, &id);
+		if (IsOpenAlActive()) {
+			if (monoId != 0)
+				alDeleteBuffers(1, &monoId);
+			if (stereoId != 0 && stereoId != monoId)
+				alDeleteBuffers(1, &stereoId);
 		}
 	}
 };
@@ -106,53 +112,99 @@ float VolumeLogToLinear(int logVolume, int logMin, int logMax)
 	return std::pow(LogBase, logScaled / VolumeScale);
 }
 
-std::shared_ptr<OpenAlBuffer> DecodeToOpenAlBuffer(SDL_RWops *handle, bool isMp3)
+/**
+ * @brief Decodes raw WAV or MP3 memory directly via dr_wav / dr_mp3 into native 16-bit PCM frames
+ * and creates both a mono buffer (for 3D positional HRTF/surround spatialization) and a stereo
+ * buffer (for direct uncolored 2D UI/inventory/player-centered playback that bypasses HRTF).
+ */
+std::shared_ptr<OpenAlBuffer> DecodeMemoryToOpenAlBuffer(const std::uint8_t *data, std::size_t dwBytes, bool isMp3)
 {
-	auto decoder = CreateDecoder(isMp3);
-	if (!decoder->open(handle)) {
-		SDL_RWclose(handle);
+	if (data == nullptr || dwBytes == 0)
 		return nullptr;
-	}
 
-	const int channels = decoder->getChannels();
-	const int sampleRate = decoder->getRate();
-	if ((channels != 1 && channels != 2) || sampleRate <= 0) {
-		SDL_RWclose(handle);
-		return nullptr;
-	}
-
+	int channels = 0;
+	int sampleRate = 0;
 	std::vector<std::int16_t> pcm;
-	pcm.reserve(32768);
-	std::array<float, 4096> chunk {};
-	bool callAgain = true;
-	while (callAgain) {
-		const int decoded = decoder->decode(chunk.data(), static_cast<int>(chunk.size()), callAgain);
-		if (decoded <= 0)
-			break;
-		const std::size_t oldSize = pcm.size();
-		pcm.resize(oldSize + static_cast<std::size_t>(decoded));
-		for (int i = 0; i < decoded; ++i) {
-			const float clamped = clamp(chunk[static_cast<std::size_t>(i)], -1.0F, 1.0F);
-			pcm[oldSize + static_cast<std::size_t>(i)] = static_cast<std::int16_t>(clamped * 32767.0F);
+
+	if (!isMp3) {
+		drwav wav;
+		if (!drwav_init_memory(&wav, data, dwBytes, nullptr))
+			return nullptr;
+
+		channels = static_cast<int>(wav.channels);
+		sampleRate = static_cast<int>(wav.sampleRate);
+		if ((channels != 1 && channels != 2) || sampleRate <= 0 || wav.totalPCMFrameCount == 0) {
+			drwav_uninit(&wav);
+			return nullptr;
 		}
+
+		const drwav_uint64 totalFrames = wav.totalPCMFrameCount;
+		pcm.resize(static_cast<std::size_t>(totalFrames * static_cast<drwav_uint64>(channels)));
+		const drwav_uint64 framesRead = drwav_read_pcm_frames_s16(&wav, totalFrames, pcm.data());
+		drwav_uninit(&wav);
+
+		if (framesRead == 0)
+			return nullptr;
+		pcm.resize(static_cast<std::size_t>(framesRead * static_cast<drwav_uint64>(channels)));
+	} else {
+		drmp3 mp3;
+		if (!drmp3_init_memory(&mp3, data, dwBytes, nullptr))
+			return nullptr;
+
+		channels = static_cast<int>(mp3.channels);
+		sampleRate = static_cast<int>(mp3.sampleRate);
+		if ((channels != 1 && channels != 2) || sampleRate <= 0) {
+			drmp3_uninit(&mp3);
+			return nullptr;
+		}
+
+		pcm.reserve(32768);
+		std::array<std::int16_t, 4096> chunk {};
+		const drmp3_uint64 chunkFrames = chunk.size() / static_cast<std::size_t>(channels);
+		while (true) {
+			const drmp3_uint64 framesRead = drmp3_read_pcm_frames_s16(&mp3, chunkFrames, chunk.data());
+			if (framesRead == 0)
+				break;
+			const std::size_t samplesRead = static_cast<std::size_t>(framesRead) * static_cast<std::size_t>(channels);
+			pcm.insert(pcm.end(), chunk.begin(), chunk.begin() + samplesRead);
+		}
+		drmp3_uninit(&mp3);
+
+		if (pcm.empty())
+			return nullptr;
 	}
-
-	SDL_RWclose(handle);
-
-	if (pcm.empty())
-		return nullptr;
 
 	auto buffer = std::make_shared<OpenAlBuffer>();
+	ALuint ids[2] = { 0, 0 };
 	alGetError();
-	alGenBuffers(1, &buffer->id);
-	if (alGetError() != AL_NO_ERROR || buffer->id == 0)
+	alGenBuffers(2, ids);
+	if (alGetError() != AL_NO_ERROR || ids[0] == 0 || ids[1] == 0) {
+		if (ids[0] != 0 || ids[1] != 0)
+			alDeleteBuffers(2, ids);
 		return nullptr;
+	}
+	buffer->monoId = ids[0];
+	buffer->stereoId = ids[1];
 
-	const ALenum format = (channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-	alBufferData(buffer->id, format, pcm.data(), static_cast<ALsizei>(pcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
+	if (channels == 1) {
+		alBufferData(buffer->monoId, AL_FORMAT_MONO16, pcm.data(), static_cast<ALsizei>(pcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
+		std::vector<std::int16_t> stereoPcm(pcm.size() * 2);
+		for (std::size_t i = 0; i < pcm.size(); ++i) {
+			stereoPcm[i * 2] = pcm[i];
+			stereoPcm[i * 2 + 1] = pcm[i];
+		}
+		alBufferData(buffer->stereoId, AL_FORMAT_STEREO16, stereoPcm.data(), static_cast<ALsizei>(stereoPcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
+	} else {
+		alBufferData(buffer->stereoId, AL_FORMAT_STEREO16, pcm.data(), static_cast<ALsizei>(pcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
+		const std::size_t frameCount = pcm.size() / 2;
+		std::vector<std::int16_t> monoPcm(frameCount);
+		for (std::size_t i = 0; i < frameCount; ++i) {
+			monoPcm[i] = static_cast<std::int16_t>((static_cast<int>(pcm[i * 2]) + static_cast<int>(pcm[i * 2 + 1])) / 2);
+		}
+		alBufferData(buffer->monoId, AL_FORMAT_MONO16, monoPcm.data(), static_cast<ALsizei>(monoPcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
+	}
+
 	if (alGetError() != AL_NO_ERROR) {
-		alDeleteBuffers(1, &buffer->id);
-		buffer->id = 0;
 		return nullptr;
 	}
 
@@ -171,9 +223,18 @@ ALuint CreateOpenAlSource(ALuint bufferId)
 		return 0;
 
 	alSourcei(source, AL_BUFFER, static_cast<ALint>(bufferId));
+	alSourcef(source, AL_PITCH, 1.0F);
 	alSourcei(source, AL_SOURCE_RELATIVE, AL_TRUE);
 	alSourcef(source, AL_ROLLOFF_FACTOR, 0.0F);
-	alSource3f(source, AL_POSITION, 0.0F, 0.0F, -2.0F);
+	alSource3f(source, AL_POSITION, 0.0F, 0.0F, 0.0F);
+	alSource3f(source, AL_VELOCITY, 0.0F, 0.0F, 0.0F);
+
+	// Use OpenAL Soft's highest-quality 24-point band-limited sinc resampler (BSinc24)
+	const ALint numResamplers = alGetInteger(AL_NUM_RESAMPLERS_SOFT);
+	if (numResamplers > 0) {
+		alSourcei(source, AL_SOURCE_RESAMPLER_SOFT, numResamplers - 1);
+	}
+	alGetError();
 	return source;
 }
 
@@ -213,6 +274,7 @@ bool SoundSample::IsPlaying()
 bool SoundSample::Play(int numIterations)
 {
 	if (al_source_ != 0 && IsOpenAlActive()) {
+		alSourcef(al_source_, AL_PITCH, 1.0F);
 		alSourcei(al_source_, AL_LOOPING, numIterations == 0 ? AL_TRUE : AL_FALSE);
 		alSourcePlay(al_source_);
 		return alGetError() == AL_NO_ERROR;
@@ -229,37 +291,50 @@ bool SoundSample::PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, 
 	const int combinedLogVol = logSoundVolume + logUserVolume * (ATTENUATION_MIN / VOLUME_MIN);
 	SetVolume(combinedLogVol, ATTENUATION_MIN, 0);
 
-	if (al_source_ != 0 && IsOpenAlActive()) {
-		if (isPositional) {
-			// Map isometric tile offsets (deltaX, deltaY) to listener-relative 3D coordinates:
-			// Screen X (left/right) = (deltaX - deltaY) * 0.7071
-			// Screen Y (up/down)    = (deltaX + deltaY) * 0.7071
-			const float isoX = static_cast<float>(deltaX - deltaY) * 0.70710678F * 0.35F;
-			const float isoY = static_cast<float>(deltaX + deltaY) * 0.70710678F * 0.35F;
-			const float posX = isoX;
-			const float posY = -isoY * 0.30F;
-			const float posZ = isoY * 0.75F - 2.2F;
+	if (al_source_ != 0 && al_buffer_ != nullptr && IsOpenAlActive()) {
+		const bool use3DSpatial = isPositional && (deltaX != 0 || deltaY != 0);
+		const ALuint targetBufferId = use3DSpatial ? al_buffer_->monoId : al_buffer_->stereoId;
+
+		ALint currentBuffer = 0;
+		alGetSourcei(al_source_, AL_BUFFER, &currentBuffer);
+		if (static_cast<ALuint>(currentBuffer) != targetBufferId) {
+			alSourceStop(al_source_);
+			alSourcei(al_source_, AL_BUFFER, static_cast<ALint>(targetBufferId));
+		}
+
+		if (use3DSpatial) {
+			// Map isometric tile offsets (deltaX, deltaY) onto the horizontal listener plane (posY = 0)
+			// with a small front depth offset (posZ = -0.28F) whenever the sound is to the left or right
+			// of the player (horiz != 0). This places melee monsters (|horiz| = 1..2) at +-82 to +-85 degrees
+			// azimuth and distant monsters/barrels at +-85 to +-88 degrees azimuth regardless of vertical screen offset.
+			const float horiz = static_cast<float>(deltaX - deltaY);
+			const float vert = static_cast<float>(deltaX + deltaY);
+			float posX = 0.0F;
+			float posY = 0.0F;
+			float posZ = -0.28F;
+			if (horiz != 0.0F) {
+				posX = std::copysign(1.20F + std::abs(horiz) * 0.90F, horiz);
+			} else {
+				posZ = (vert > 0.0F) ? 0.80F : -1.00F;
+			}
 
 			alSourcei(al_source_, AL_DIRECT_CHANNELS_SOFT, AL_FALSE);
 			alSourcei(al_source_, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
 			alSource3f(al_source_, AL_POSITION, posX, posY, posZ);
 		} else {
-			const float panLinear = PanLogToLinear(logPan);
-			if (std::abs(panLinear) < 0.001F && !applyReverb) {
-				alSourcei(al_source_, AL_DIRECT_CHANNELS_SOFT, AL_TRUE);
-				alSourcei(al_source_, AL_SOURCE_SPATIALIZE_SOFT, AL_FALSE);
-				alSource3f(al_source_, AL_POSITION, 0.0F, 0.0F, 0.0F);
-			} else {
-				alSourcei(al_source_, AL_DIRECT_CHANNELS_SOFT, AL_FALSE);
-				alSourcei(al_source_, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
-				alSource3f(al_source_, AL_POSITION, panLinear * 2.5F, 0.0F, -2.0F);
-			}
+			// 2D UI, inventory, town speech, and player-centered sounds (delta == 0,0) use the stereo buffer
+			// with AL_REMIX_UNMATCHED_SOFT and AL_SOURCE_SPATIALIZE_SOFT=AL_FALSE to bypass HRTF coloration completely.
+			alSourcei(al_source_, AL_DIRECT_CHANNELS_SOFT, AL_REMIX_UNMATCHED_SOFT);
+			alSourcei(al_source_, AL_SOURCE_SPATIALIZE_SOFT, AL_FALSE);
+			alSource3f(al_source_, AL_POSITION, 0.0F, 0.0F, 0.0F);
 		}
 
-		const ALuint efxSlot = (applyReverb && *sgOptions.Audio.efxReverb) ? GetOpenAlEfxSlot() : 0;
+		const ALuint efxSlot = (applyReverb && *sgOptions.Audio.efxReverb != ReverbLevel::Off) ? GetOpenAlEfxSlot() : 0;
 		if (efxSlot != 0) {
-			const ALuint directFilter = isOccluded ? GetOpenAlOccludedDirectFilter() : AL_FILTER_NULL;
-			const ALuint sendFilter = isOccluded ? GetOpenAlOccludedSendFilter() : AL_FILTER_NULL;
+			const ALuint directFilter = (use3DSpatial && isOccluded) ? GetOpenAlOccludedDirectFilter() : AL_FILTER_NULL;
+			const ALuint sendFilter = use3DSpatial
+			    ? (isOccluded ? GetOpenAlOccludedSendFilter() : AL_FILTER_NULL)
+			    : GetOpenAlStereoSendFilter();
 			alSourcei(al_source_, AL_DIRECT_FILTER, static_cast<ALint>(directFilter));
 			alSource3i(al_source_, AL_AUXILIARY_SEND_FILTER, static_cast<ALint>(efxSlot), 0, static_cast<ALint>(sendFilter));
 		} else {
@@ -311,7 +386,7 @@ int SoundSample::DuplicateFrom(const SoundSample &other)
 	if (other.al_buffer_ != nullptr && IsOpenAlActive()) {
 		Release();
 		al_buffer_ = other.al_buffer_;
-		al_source_ = CreateOpenAlSource(al_buffer_->id);
+		al_source_ = CreateOpenAlSource(al_buffer_->stereoId);
 		if (al_source_ == 0) {
 			al_buffer_ = nullptr;
 			return -1;
@@ -327,21 +402,25 @@ int SoundSample::SetChunkStream(std::string filePath, bool isMp3, bool logErrors
 {
 	Release();
 
-	// Decode short speech/boss taunt streams (< 2 MB) into OpenAL Soft so they benefit from EFX reverb in dungeons
+	// Decode short speech/boss taunt streams (< 2 MB) directly into OpenAL Soft so they benefit from EFX reverb in dungeons
 	if (IsOpenAlActive()) {
 		AssetRef ref = FindAsset(filePath.c_str());
 		if (ref.ok() && ref.size() > 0 && ref.size() <= 2 * 1024 * 1024) {
-			SDL_RWops *rwHandle = OpenAssetAsSdlRwOps(filePath.c_str(), /*threadsafe=*/true);
-			if (rwHandle != nullptr) {
-				al_buffer_ = DecodeToOpenAlBuffer(rwHandle, isMp3);
-				if (al_buffer_ != nullptr) {
-					al_source_ = CreateOpenAlSource(al_buffer_->id);
-					if (al_source_ != 0) {
-						file_path_ = std::move(filePath);
-						isMp3_ = isMp3;
-						return 0;
+			const std::size_t size = ref.size();
+			AssetHandle assetHandle = OpenAsset(std::move(ref));
+			if (assetHandle.ok()) {
+				auto rawData = MakeArraySharedPtr<std::uint8_t>(size);
+				if (assetHandle.read(rawData.get(), size)) {
+					al_buffer_ = DecodeMemoryToOpenAlBuffer(rawData.get(), size, isMp3);
+					if (al_buffer_ != nullptr) {
+						al_source_ = CreateOpenAlSource(al_buffer_->stereoId);
+						if (al_source_ != 0) {
+							file_path_ = std::move(filePath);
+							isMp3_ = isMp3;
+							return 0;
+						}
+						al_buffer_ = nullptr;
 					}
-					al_buffer_ = nullptr;
 				}
 			}
 		}
@@ -371,16 +450,13 @@ int SoundSample::SetChunk(ArraySharedPtr<std::uint8_t> fileData, std::size_t dwB
 	isMp3_ = isMp3;
 
 	if (IsOpenAlActive()) {
-		SDL_RWops *buf = SDL_RWFromConstMem(fileData.get(), static_cast<int>(dwBytes));
-		if (buf != nullptr) {
-			al_buffer_ = DecodeToOpenAlBuffer(buf, isMp3_);
-			if (al_buffer_ != nullptr) {
-				al_source_ = CreateOpenAlSource(al_buffer_->id);
-				if (al_source_ != 0) {
-					return 0;
-				}
-				al_buffer_ = nullptr;
+		al_buffer_ = DecodeMemoryToOpenAlBuffer(fileData.get(), dwBytes, isMp3_);
+		if (al_buffer_ != nullptr) {
+			al_source_ = CreateOpenAlSource(al_buffer_->stereoId);
+			if (al_source_ != 0) {
+				return 0;
 			}
+			al_buffer_ = nullptr;
 		}
 	}
 

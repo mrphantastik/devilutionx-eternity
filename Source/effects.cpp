@@ -1021,8 +1021,15 @@ void PlaySfxPriv(TSFX *pSFX, bool loc, Point position)
 	const Displacement delta = (loc && gbRunGame && MyPlayer != nullptr) ? (position - playerPos) : Displacement { 0, 0 };
 	const bool isUiOrInvSound = (pSFX->bFlags & sfx_UI) != 0 || (pSFX >= &sgSFX[IS_IANVL] && pSFX <= &sgSFX[IS_ISWORD]);
 	const bool applyReverb = gbRunGame && !isUiOrInvSound;
+	const int tileDist = std::max(std::abs(delta.deltaX), std::abs(delta.deltaY));
 	const bool isOccluded = loc && gbRunGame && currlevel != 0 && leveltype != DTYPE_TOWN && MyPlayer != nullptr
-	    && delta != Displacement { 0, 0 } && !LineClear(IsTileNotSolid, playerPos, position);
+	    && tileDist > 4
+	    && !LineClear([playerPos, position](Point pt) {
+		       if (pt == playerPos || pt == position || !InDungeonBounds(pt))
+			       return true;
+		       return !TileHasAny(dPiece[pt.x][pt.y], TileProperties::Trap);
+	       },
+	        playerPos, position);
 
 	if ((pSFX->bFlags & sfx_STREAM) != 0) {
 		StreamPlay(pSFX, lVolume, lPan, delta.deltaX, delta.deltaY, loc, applyReverb && currlevel != 0, isOccluded);

@@ -825,7 +825,7 @@ void StartEating(Monster &monster)
 
 void DiabloDeath(Monster &diablo, bool sendmsg)
 {
-	PlaySFX(USFX_DIABLOD);
+	PlaySfxLoc(USFX_DIABLOD, diablo.position.tile);
 	auto &quest = Quests[Q_DIABLO];
 	quest._qactive = QUEST_DONE;
 	if (sendmsg)
@@ -3994,20 +3994,20 @@ void ProcessMonsters()
 
 		if (IsTileVisible(monster.position.tile) && monster.activeForTicks == 0) {
 			if (monster.type().type == MT_CLEAVER) {
-				PlaySFX(USFX_CLEAVER);
+				PlaySfxLoc(USFX_CLEAVER, monster.position.tile);
 			}
 			if (monster.type().type == MT_NAKRUL) {
 				if (sgGameInitInfo.bCowQuest != 0) {
-					PlaySFX(USFX_NAKRUL6);
+					PlaySfxLoc(USFX_NAKRUL6, monster.position.tile);
 				} else {
 					if (IsUberRoomOpened)
-						PlaySFX(USFX_NAKRUL4);
+						PlaySfxLoc(USFX_NAKRUL4, monster.position.tile);
 					else
-						PlaySFX(USFX_NAKRUL5);
+						PlaySfxLoc(USFX_NAKRUL5, monster.position.tile);
 				}
 			}
 			if (monster.type().type == MT_DEFILER)
-				PlaySFX(USFX_DEFILER8);
+				PlaySfxLoc(USFX_DEFILER8, monster.position.tile);
 			UpdateEnemy(monster);
 		}
 
@@ -4352,7 +4352,7 @@ void PlayEffect(Monster &monster, MonsterSound mode)
 	}
 
 	TSnd *snd = monster.type().sounds[static_cast<size_t>(mode)][sndIdx].get();
-	if (snd == nullptr || snd->isPlaying()) {
+	if (snd == nullptr || (mode == MonsterSound::Special && snd->isPlaying())) {
 		return;
 	}
 
@@ -4361,7 +4361,25 @@ void PlayEffect(Monster &monster, MonsterSound mode)
 	if (!CalculateSoundPosition(monster.position.tile, &lVolume, &lPan))
 		return;
 
-	snd_play_snd(snd, lVolume, lPan);
+	if (gbRunGame) {
+		UpdateSoundEnvironment(currlevel == 0 ? DTYPE_TOWN : leveltype);
+	}
+
+	const Point playerPos = (gbRunGame && MyPlayer != nullptr) ? Point { MyPlayer->position.tile } : Point { 0, 0 };
+	const Point monsterPos { monster.position.tile };
+	const Displacement delta = (gbRunGame && MyPlayer != nullptr) ? (monsterPos - playerPos) : Displacement { 0, 0 };
+	const bool applyReverb = gbRunGame && currlevel != 0;
+	const int tileDist = std::max(std::abs(delta.deltaX), std::abs(delta.deltaY));
+	const bool isOccluded = gbRunGame && currlevel != 0 && leveltype != DTYPE_TOWN && MyPlayer != nullptr
+	    && tileDist > 4
+	    && !LineClear([playerPos, monsterPos](Point pt) {
+		       if (pt == playerPos || pt == monsterPos || !InDungeonBounds(pt))
+			       return true;
+		       return !TileHasAny(dPiece[pt.x][pt.y], TileProperties::Trap);
+	       },
+	        playerPos, monsterPos);
+
+	snd_play_snd_ex(snd, lVolume, lPan, delta.deltaX, delta.deltaY, true, applyReverb, isOccluded);
 }
 
 void MissToMonst(Missile &missile, Point position)

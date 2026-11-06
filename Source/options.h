@@ -460,6 +460,12 @@ struct HellfireOptions : OptionCategoryBase {
 	OptionEntryInt<std::uint32_t> lastMultiplayerHero;
 };
 
+enum class ReverbLevel : uint8_t {
+	Off = 0,
+	Normal = 1,
+	High = 2,
+};
+
 struct AudioOptions : OptionCategoryBase {
 	AudioOptions();
 	std::vector<OptionEntryBase *> GetEntries() override;
@@ -474,8 +480,8 @@ struct AudioOptions : OptionCategoryBase {
 	OptionEntryBoolean autoEquipSound;
 	/** @brief Picking up items emits the items pickup sound. */
 	OptionEntryBoolean itemPickupSound;
-	/** @brief Enable OpenAL EFX environmental reverb and wall occlusion in dungeons. */
-	OptionEntryBoolean efxReverb;
+	/** @brief OpenAL EFX environmental reverb intensity (Off, Normal, High). */
+	OptionEntryEnum<ReverbLevel> efxReverb;
 	/** @brief Enable 3D binaural HRTF spatial audio for headphones. */
 	OptionEntryBoolean hrtf;
 

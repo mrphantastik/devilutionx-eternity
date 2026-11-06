@@ -55,25 +55,46 @@ ALuint gEfxSlot = 0;
 ALuint gEfxEffect = 0;
 ALuint gFilterOccludedDirect = 0;
 ALuint gFilterOccludedSend = 0;
+ALuint gFilterStereoSend = 0;
 dungeon_type gActiveReverbDungeon = DTYPE_NONE;
 
-void LoadEaxReverbPreset(ALuint effect, const EFXEAXREVERBPROPERTIES &preset, float gainScale)
+float GetOpenAlReverbGain()
 {
+	switch (*sgOptions.Audio.efxReverb) {
+	case ReverbLevel::High:
+		return 1.0F;
+	case ReverbLevel::Normal:
+		return 0.45F;
+	case ReverbLevel::Off:
+	default:
+		return 0.0F;
+	}
+}
+
+void LoadEaxReverbPreset(ALuint effect, const EFXEAXREVERBPROPERTIES &preset, float effectGain, float lateReverbScale)
+{
+	const bool isHigh = (*sgOptions.Audio.efxReverb == ReverbLevel::High);
+	const float gainScale = isHigh ? 1.00F : 0.68F;
+	const float reflScale = isHigh ? 1.50F : 0.75F;
+	const float lateScale = lateReverbScale * (isHigh ? 1.25F : 0.50F);
+	const float decayScale = isHigh ? 1.20F : 0.75F;
+	const float scaledDecayTime = clamp(preset.flDecayTime * decayScale, 0.1F, 20.0F);
+
 	alGetError();
 	alEffecti(effect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
 	if (alGetError() == AL_NO_ERROR) {
 		alEffectf(effect, AL_EAXREVERB_DENSITY, preset.flDensity);
 		alEffectf(effect, AL_EAXREVERB_DIFFUSION, preset.flDiffusion);
-		alEffectf(effect, AL_EAXREVERB_GAIN, clamp(preset.flGain * gainScale, 0.0F, 1.0F));
+		alEffectf(effect, AL_EAXREVERB_GAIN, clamp(effectGain * gainScale, 0.0F, 1.0F));
 		alEffectf(effect, AL_EAXREVERB_GAINHF, preset.flGainHF);
 		alEffectf(effect, AL_EAXREVERB_GAINLF, preset.flGainLF);
-		alEffectf(effect, AL_EAXREVERB_DECAY_TIME, preset.flDecayTime);
+		alEffectf(effect, AL_EAXREVERB_DECAY_TIME, scaledDecayTime);
 		alEffectf(effect, AL_EAXREVERB_DECAY_HFRATIO, preset.flDecayHFRatio);
 		alEffectf(effect, AL_EAXREVERB_DECAY_LFRATIO, preset.flDecayLFRatio);
-		alEffectf(effect, AL_EAXREVERB_REFLECTIONS_GAIN, preset.flReflectionsGain);
+		alEffectf(effect, AL_EAXREVERB_REFLECTIONS_GAIN, clamp(preset.flReflectionsGain * reflScale, 0.0F, 3.16F));
 		alEffectf(effect, AL_EAXREVERB_REFLECTIONS_DELAY, preset.flReflectionsDelay);
 		alEffectfv(effect, AL_EAXREVERB_REFLECTIONS_PAN, preset.flReflectionsPan);
-		alEffectf(effect, AL_EAXREVERB_LATE_REVERB_GAIN, preset.flLateReverbGain);
+		alEffectf(effect, AL_EAXREVERB_LATE_REVERB_GAIN, clamp(preset.flLateReverbGain * lateScale, 0.0F, 10.0F));
 		alEffectf(effect, AL_EAXREVERB_LATE_REVERB_DELAY, preset.flLateReverbDelay);
 		alEffectfv(effect, AL_EAXREVERB_LATE_REVERB_PAN, preset.flLateReverbPan);
 		alEffectf(effect, AL_EAXREVERB_ECHO_TIME, preset.flEchoTime);
@@ -91,13 +112,13 @@ void LoadEaxReverbPreset(ALuint effect, const EFXEAXREVERBPROPERTIES &preset, fl
 	alEffecti(effect, AL_EFFECT_TYPE, AL_EFFECT_REVERB);
 	alEffectf(effect, AL_REVERB_DENSITY, preset.flDensity);
 	alEffectf(effect, AL_REVERB_DIFFUSION, preset.flDiffusion);
-	alEffectf(effect, AL_REVERB_GAIN, clamp(preset.flGain * gainScale, 0.0F, 1.0F));
+	alEffectf(effect, AL_REVERB_GAIN, clamp(effectGain * gainScale, 0.0F, 1.0F));
 	alEffectf(effect, AL_REVERB_GAINHF, preset.flGainHF);
-	alEffectf(effect, AL_REVERB_DECAY_TIME, preset.flDecayTime);
+	alEffectf(effect, AL_REVERB_DECAY_TIME, scaledDecayTime);
 	alEffectf(effect, AL_REVERB_DECAY_HFRATIO, preset.flDecayHFRatio);
-	alEffectf(effect, AL_REVERB_REFLECTIONS_GAIN, preset.flReflectionsGain);
+	alEffectf(effect, AL_REVERB_REFLECTIONS_GAIN, clamp(preset.flReflectionsGain * reflScale, 0.0F, 3.16F));
 	alEffectf(effect, AL_REVERB_REFLECTIONS_DELAY, preset.flReflectionsDelay);
-	alEffectf(effect, AL_REVERB_LATE_REVERB_GAIN, preset.flLateReverbGain);
+	alEffectf(effect, AL_REVERB_LATE_REVERB_GAIN, clamp(preset.flLateReverbGain * lateScale, 0.0F, 10.0F));
 	alEffectf(effect, AL_REVERB_LATE_REVERB_DELAY, preset.flLateReverbDelay);
 	alEffectf(effect, AL_REVERB_AIR_ABSORPTION_GAINHF, preset.flAirAbsorptionGainHF);
 	alEffectf(effect, AL_REVERB_ROOM_ROLLOFF_FACTOR, preset.flRoomRolloffFactor);
@@ -116,7 +137,7 @@ void InitOpenAl()
 		return;
 	}
 
-	const ALCint sampleRate = static_cast<ALCint>(std::max<std::uint32_t>(*sgOptions.Audio.sampleRate, 44100U));
+	const ALCint sampleRate = static_cast<ALCint>(std::max<std::uint32_t>(*sgOptions.Audio.sampleRate, 48000U));
 	const ALCint attrs[] = {
 		ALC_FREQUENCY, sampleRate,
 		ALC_MAX_AUXILIARY_SENDS, 2,
@@ -136,6 +157,7 @@ void InitOpenAl()
 		return;
 	}
 
+	alDopplerFactor(0.0F);
 	const ALfloat listenerOri[] = { 0.0F, 0.0F, -1.0F, 0.0F, 1.0F, 0.0F };
 	alListener3f(AL_POSITION, 0.0F, 0.0F, 0.0F);
 	alListener3f(AL_VELOCITY, 0.0F, 0.0F, 0.0F);
@@ -149,15 +171,15 @@ void InitOpenAl()
 			gEfxSlot = 0;
 			gEfxEffect = 0;
 		} else {
-			alAuxiliaryEffectSlotf(gEfxSlot, AL_EFFECTSLOT_GAIN, 1.0F);
+			alAuxiliaryEffectSlotf(gEfxSlot, AL_EFFECTSLOT_GAIN, GetOpenAlReverbGain());
 			alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_AUXILIARY_SEND_AUTO, AL_TRUE);
 		}
 
 		alGenFilters(1, &gFilterOccludedDirect);
 		if (alGetError() == AL_NO_ERROR && gFilterOccludedDirect != 0) {
 			alFilteri(gFilterOccludedDirect, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
-			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAIN, 0.58F);
-			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAINHF, 0.22F);
+			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAIN, 0.72F);
+			alFilterf(gFilterOccludedDirect, AL_LOWPASS_GAINHF, 0.48F);
 		} else {
 			gFilterOccludedDirect = 0;
 		}
@@ -166,9 +188,18 @@ void InitOpenAl()
 		if (alGetError() == AL_NO_ERROR && gFilterOccludedSend != 0) {
 			alFilteri(gFilterOccludedSend, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
 			alFilterf(gFilterOccludedSend, AL_LOWPASS_GAIN, 0.85F);
-			alFilterf(gFilterOccludedSend, AL_LOWPASS_GAINHF, 0.45F);
+			alFilterf(gFilterOccludedSend, AL_LOWPASS_GAINHF, 0.55F);
 		} else {
 			gFilterOccludedSend = 0;
+		}
+
+		alGenFilters(1, &gFilterStereoSend);
+		if (alGetError() == AL_NO_ERROR && gFilterStereoSend != 0) {
+			alFilteri(gFilterStereoSend, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+			alFilterf(gFilterStereoSend, AL_LOWPASS_GAIN, 0.50F);
+			alFilterf(gFilterStereoSend, AL_LOWPASS_GAINHF, 1.00F);
+		} else {
+			gFilterStereoSend = 0;
 		}
 
 		gActiveReverbDungeon = DTYPE_NONE;
@@ -188,6 +219,10 @@ void DeinitOpenAl()
 	if (gFilterOccludedSend != 0) {
 		alDeleteFilters(1, &gFilterOccludedSend);
 		gFilterOccludedSend = 0;
+	}
+	if (gFilterStereoSend != 0) {
+		alDeleteFilters(1, &gFilterStereoSend);
+		gFilterStereoSend = 0;
 	}
 	if (gEfxSlot != 0) {
 		alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL);
@@ -388,6 +423,34 @@ uint32_t GetOpenAlOccludedSendFilter()
 	return gFilterOccludedSend;
 }
 
+uint32_t GetOpenAlStereoSendFilter()
+{
+	return gFilterStereoSend;
+}
+
+void ApplyOpenAlReverbOption()
+{
+	if (!IsOpenAlActive() || gEfxSlot == 0 || gEfxEffect == 0)
+		return;
+	const dungeon_type targetDungeon = (gActiveReverbDungeon != DTYPE_NONE) ? gActiveReverbDungeon : DTYPE_TOWN;
+	gActiveReverbDungeon = DTYPE_NONE;
+	UpdateSoundEnvironment(targetDungeon);
+}
+
+void ApplyOpenAlHrtfOption()
+{
+	if (!IsOpenAlActive() || gAlDevice == nullptr)
+		return;
+	const ALCint sampleRate = static_cast<ALCint>(std::max<std::uint32_t>(*sgOptions.Audio.sampleRate, 48000U));
+	const ALCint attrs[] = {
+		ALC_FREQUENCY, sampleRate,
+		ALC_MAX_AUXILIARY_SENDS, 2,
+		ALC_HRTF_SOFT, *sgOptions.Audio.hrtf ? ALC_TRUE : ALC_FALSE,
+		0, 0
+	};
+	alcResetDeviceSOFT(gAlDevice, attrs);
+}
+
 void UpdateSoundEnvironment(dungeon_type dungeonType)
 {
 	if (!IsOpenAlActive() || gEfxSlot == 0 || gEfxEffect == 0)
@@ -398,52 +461,62 @@ void UpdateSoundEnvironment(dungeon_type dungeonType)
 	gActiveReverbDungeon = dungeonType;
 
 	EFXEAXREVERBPROPERTIES preset = EFX_REVERB_PRESET_GENERIC;
-	float gainScale = 0.80F;
+	float effectGain = 0.85F;
+	float lateReverbScale = 1.50F;
 
 	switch (dungeonType) {
 	case DTYPE_TOWN:
 		preset = EFX_REVERB_PRESET_OUTDOORS_BACKYARD;
-		gainScale = 0.45F;
+		effectGain = 0.55F;
+		lateReverbScale = 1.60F;
 		break;
 	case DTYPE_CATHEDRAL:
 		preset = EFX_REVERB_PRESET_CHAPEL;
-		gainScale = 0.82F;
+		effectGain = 0.92F;
+		lateReverbScale = 1.55F;
 		break;
 	case DTYPE_CATACOMBS:
 		preset = EFX_REVERB_PRESET_STONEROOM;
-		gainScale = 0.88F;
+		effectGain = 0.95F;
+		lateReverbScale = 1.65F;
 		break;
 	case DTYPE_CAVES:
 		preset = EFX_REVERB_PRESET_CAVE;
-		gainScale = 0.88F;
+		effectGain = 0.95F;
+		lateReverbScale = 1.55F;
 		break;
 	case DTYPE_HELL:
 		preset = EFX_REVERB_PRESET_CASTLE_LARGEROOM;
-		preset.flDecayTime = 3.5F;
-		preset.flDecayLFRatio = 1.25F;
-		gainScale = 0.92F;
+		preset.flDecayTime = 3.6F;
+		preset.flDecayLFRatio = 1.30F;
+		effectGain = 1.00F;
+		lateReverbScale = 1.65F;
 		break;
 	case DTYPE_NEST:
 		preset = EFX_REVERB_PRESET_CAVE;
-		preset.flDecayTime = 1.50F;
-		preset.flDecayHFRatio = 0.35F;
-		preset.flDiffusion = 0.75F;
-		gainScale = 0.78F;
+		preset.flDecayTime = 1.60F;
+		preset.flDecayHFRatio = 0.38F;
+		preset.flDiffusion = 0.78F;
+		effectGain = 0.90F;
+		lateReverbScale = 1.55F;
 		break;
 	case DTYPE_CRYPT:
 		preset = EFX_REVERB_PRESET_AUDITORIUM;
-		preset.flDecayTime = 3.10F;
-		preset.flDecayHFRatio = 0.92F;
-		gainScale = 0.88F;
+		preset.flDecayTime = 3.20F;
+		preset.flDecayHFRatio = 0.95F;
+		effectGain = 0.95F;
+		lateReverbScale = 1.65F;
 		break;
 	default:
 		preset = EFX_REVERB_PRESET_OUTDOORS_BACKYARD;
-		gainScale = 0.40F;
+		effectGain = 0.50F;
+		lateReverbScale = 1.40F;
 		break;
 	}
 
-	LoadEaxReverbPreset(gEfxEffect, preset, gainScale);
+	LoadEaxReverbPreset(gEfxEffect, preset, effectGain, lateReverbScale);
 	alAuxiliaryEffectSloti(gEfxSlot, AL_EFFECTSLOT_EFFECT, static_cast<ALint>(gEfxEffect));
+	alAuxiliaryEffectSlotf(gEfxSlot, AL_EFFECTSLOT_GAIN, GetOpenAlReverbGain());
 }
 
 void ClearDuplicateSounds()

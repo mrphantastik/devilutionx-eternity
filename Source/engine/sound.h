@@ -57,7 +57,10 @@ bool IsOpenAlActive();
 uint32_t GetOpenAlEfxSlot();
 uint32_t GetOpenAlOccludedDirectFilter();
 uint32_t GetOpenAlOccludedSendFilter();
+uint32_t GetOpenAlStereoSendFilter();
 void UpdateSoundEnvironment(dungeon_type dungeonType);
+void ApplyOpenAlReverbOption();
+void ApplyOpenAlHrtfOption();
 
 void ClearDuplicateSounds();
 void snd_play_snd(TSnd *pSnd, int lVolume, int lPan);
