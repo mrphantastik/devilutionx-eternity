@@ -2,7 +2,7 @@
 
 **DX:Eternity** is a curated gameplay, atmospheric, and audiovisual overhaul built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine.
 
-The primary goal of this project is to expand vanilla Diablo with fresh depth, variety, and modern acoustic fidelity while fiercely protecting the classic Diablo I pace, dark-gothic tone, and itemization curve. Rather than bolting on disjointed mechanics, DX:Eternity integrates cut and expansion content seamlessly into the core Tristram descent.
+The primary goal of this project is to expand vanilla Diablo with fresh depth, variety, and modern acoustic fidelity while protecting the classic Diablo I pace, dark-gothic tone, and itemization curve. Rather than bolting on disjointed mechanics, DX:Eternity integrates cut and expansion content seamlessly into the core Tristram descent.
 
 ---
 
@@ -55,3 +55,4 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 * [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as rain, ambient fog, drifting ash, and cavern embers).
 * [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
+* [ ] **Cut Content Restoration:** Restoring select unreleased quests and dialogue lines.
