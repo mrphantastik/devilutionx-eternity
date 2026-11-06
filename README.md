@@ -1,46 +1,57 @@
 # DX:Eternity
 
-**DX:Eternity** is a curated gameplay and atmosphere overhaul built on top of [DevilutionX](https://github.com/diasurgical/DevilutionX).
+**DX:Eternity** is a curated gameplay, atmospheric, and audiovisual overhaul built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine.
 
-The primary purpose of this project is to **add audio-visual and gameplay variety to vanilla DevilutionX**—expanding classic *Diablo* with new dungeon branches, class archetypes, boss-exclusive unique weapons, and restored unused dark-fantasy monsters without breaking the classic *Diablo I* tone and itemization.
-
----
-
-## Features
-
-### Seamless Endgame & Dungeon Exploration
-- **Endless Single Player Loop:** Defeating Diablo no longer forces the game session to end; he drops full boss loot on death so you can continue exploring and farming.
-- **Open Town Shortcuts:** Catacombs, Caves, and Hell town entrances are open from the start of a Single Player game.
-- **Integrated Hive & Crypt Branches:** Discover a second downward staircase on **Caves Level 12** leading into the 4-level **Hive** (Levels 17–20) and a second downward staircase on **Hell Level 14** leading into the 4-level **Crypt** (Levels 21–24), all using pure classic *Diablo* loot tables.
-
-### Female Barbarian Class
-- Play as a **Female Barbarian** in character creation, pairing the Rogue's classic visual sprites, portraits, and voice lines with the Barbarian's heavy melee mechanics:
-  - High Strength and Vitality scaling with zero Magic affinity.
-  - Innate two-handed weapon mastery (wielding two-handed axes, clubs, and swords with one-handed block bonuses), innate stun/knockback advantages, and the **Rage** skill.
-
-### Restored Dark-Fantasy Bestiary
-- **Unused Vanilla Monsters Restored:** Brings back unused original *Diablo* monster models and palettes across the Hive and Crypt—including **Spider Lords**, **Torchants**, **Bone Demons**, **Devil Kin Brutes**, **Invisible Lords**, and **Satyr Lords**.
-- **Tone-Consistent Monster Roster:** Replaces jarring insectoid and out-of-place *Hellfire* sprites in the Hive and Crypt with classic dark-fantasy counterparts (such as Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while preserving dangerous ranged projectiles and elemental hazards.
-- **Clean Immersion:** Removes repetitive Defiler pop-up monologues in the Hive.
-
-### Hell Diablo Boss-Exclusive Unique Weapons
-Defeating **Diablo on Hell difficulty** grants an independent **2% (1-in-50)** chance to drop each of three build-defining unique weapons:
-
-- **Kadi's Fury** (*Broad Sword*)
-  - `+100% To Hit`, `+175% Damage`, `Fastest Attack`, `4–16 Lightning Damage`, `Faster Walk` (in dungeons), `Resist All: -30%`
-- **Apostate's Crook** (*War Staff*)
-  - `+2 to All Spell Levels`, `+40 to Magic`, `+80 to Maximum Mana`, `Damage Reduced by 8`, `-50 to Armor Class`, `Resist All: -30%`
-- **Loxley's Bend** (*Long War Bow*)
-  - `Knocks Target Back`, `+40 to Dexterity`, `+30 to Maximum Damage`, `Steals 5% Mana` (works on bow attacks), `-40% Light Radius`, `-50 to Maximum Life`
-
-### 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
-- **OpenAL Soft + EFX Environmental Reverb:** Every area features tailored acoustic reverberation (`AL_EFFECT_EAXREVERB`)—from subtle open-air reflections in Tristram to Gothic stone echoes in the Cathedral, claustrophobic tombs in the Catacombs, cavernous Caves, booming abyssal halls in Hell, damp organic Hive tunnels, and resonant Crypt vaults.
-- **Dynamic Wall Occlusion:** Sounds originating behind solid dungeon walls are dynamically muffled via EFX low-pass filtering while preserving distant corridor reverberation.
-- **Surround Sound & Binaural HRTF:** Full 3D positional audio supporting multichannel surround speakers and binaural headphone HRTF (configurable in the in-game Audio Settings menu).
+The primary goal of this project is to expand vanilla Diablo with fresh depth, variety, and modern acoustic fidelity while fiercely protecting the classic Diablo I pace, dark-gothic tone, and itemization curve. Rather than bolting on disjointed mechanics, DX:Eternity integrates cut and expansion content seamlessly into the core Tristram descent.
 
 ---
 
-## Installation
+## Key Features
 
-1. Copy `dx-eternity.exe` into your DevilutionX / *Diablo + Hellfire* folder containing `DIABDAT.MPQ` and the expansion `.mpq` archives (`hellfire.mpq`, `hfmonk.mpq`, `hfbard.mpq`, `hfbarb.mpq`, `hfmusic.mpq`, `hfvoice.mpq`).
-2. Run `dx-eternity.exe`.
+### 🎧 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
+* **OpenAL Soft + EFX Environmental Reverb:** Every dungeon tier features custom acoustic reverberation profiles (`AL_EFFECT_EAXREVERB`)—from subtle open-air reflections in Tristram to cavernous stone echoes in the Cathedral, suffocating damp crypts, roaring magma caves, booming abyssal halls in Hell, and organic resonance in the Hive.
+* **Dynamic Wall Occlusion:** Sound sources originating behind solid dungeon geometry are dynamically muffled using EFX low-pass filtering while preserving open-air corridor travel.
+* **Surround Sound & Headphone HRTF:** Native 3D positional audio with full support for multichannel speaker layouts and binaural HRTF profiles (configurable directly from the in-game Audio Settings menu).
+
+---
+
+### 🗺️ Seamless Dungeon Branches: Hive & Crypt
+Instead of accessing expansion areas through separate town portals or gimmicky triggers, *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
+* **The Hive (Levels 17–20):** Accessible via a hidden downward stairway on **Caves Level 12**.
+* **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
+* **Classic Itemization:** Both branches utilize pure vanilla Diablo I drop and affix tables.
+* **Atmospheric Enemy Reskinning:** Out-of-place and cartoonish *Hellfire* sprites have been replaced with gritty, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
+
+---
+
+### ⚔️ New Class Archetype: The Female Barbarian
+Pairs the Rogue’s classic gothic visuals, portraits, and voice lines with brutal frontline melee mechanics:
+* **Attributes:** High Strength and Vitality caps with zero Magic affinity.
+* **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages, and the active **Rage** skill.
+
+---
+
+### 🏆 Hell Difficulty Endgame Drops
+Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three build-defining, class-tailored unique artifacts:
+
+| Item | Base | Stats & Mechanics |
+| :--- | :--- | :--- |
+| **Kadi's Fury** | Broad Sword | `+100% To Hit`, `+175% Damage`, `Fastest Attack`, `+4–16 Lightning Damage`, `Faster Walk`, `Resist All: -30%` |
+| **Apostate's Crook** | War Staff | `+2 to All Spell Levels`, `+40 to Magic`, `+80 to Maximum Mana`, `Damage Reduced by 8`, `-50 to Armor Class`, `Resist All: -30%` |
+| **Loxley's Bend** | Long War Bow | `Knocks Target Back`, `+40 to Dexterity`, `+30 to Maximum Damage`, `Steals 5% Mana (works on ranged hits)`, `-40% Light Radius`, `-50 to Maximum Life` |
+
+---
+
+## 🛠️ Other Gameplay & Polish Changes
+
+* **Restored Footstep Sounds:** Restores the subtle, randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
+* **Streamlined Hive Pacing:** Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
+* **Persistent Sessions:** Slaying Diablo drops full boss loot and leaves the game session open, allowing you to clean up unfinished quests or explore secondary dungeon branches without forcing an immediate game over.
+* **Single-Player Town Shortcuts:** Town entrance portals to the Catacombs, Caves, and Hell are unlocked from the start of a Single Player campaign for fluid session routing.
+
+---
+
+## 📋 Roadmap / To-Do
+
+* [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as surface rain, ambient fog, drifting ash, and cavern embers).
+* [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell for max-level characters and high-end equipment progression.
