@@ -16,7 +16,7 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 ---
 
 ### 🗺️ Seamless Dungeon Branches: Hive & Crypt
-Instead of accessing expansion areas through separate town portals or gimmicky triggers, *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
+*Hellfire's* dungeons are woven directly into the natural labyrinth descent:
 * **The Hive (Levels 17–20):** Accessible via a downward stairway on **Caves Level 12**.
 * **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
 * **Classic Itemization:** Both branches utilize pure vanilla Diablo I drop and affix tables.
@@ -25,7 +25,7 @@ Instead of accessing expansion areas through separate town portals or gimmicky t
 ---
 
 ### ⚔️ New Class Archetype: The Female Barbarian
-Pairs the Rogue’s classic gothic visuals, portraits, and voice lines with brutal frontline melee mechanics:
+Pairs the Rogue’s visuals, portraits, and voice lines with brutal frontline melee mechanics:
 * **Attributes:** High Strength and Vitality caps with zero Magic affinity.
 * **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages, and the active **Rage** skill.
 
