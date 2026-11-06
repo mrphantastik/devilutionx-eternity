@@ -44,10 +44,10 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 ## 🛠️ Other Gameplay & Polish Changes
 
-* **Restored Footstep Sounds:** Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
-* **Streamlined Hive Pacing:** Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
-* **Persistent Sessions:** Slaying Diablo drops full boss loot and leaves the game session open, allowing you to clean up unfinished quests or explore secondary dungeon branches without forcing an immediate game over.
-* **Single-Player Town Shortcuts:** Town entrance portals to the Catacombs, Caves, and Hell are unlocked from the start of a Single Player campaign for fluid session routing.
+* Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
+* Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
+* Slaying Diablo drops full boss loot and leaves the game session open, allowing you to clean up unfinished quests or explore secondary dungeon branches without forcing an immediate game over.
+* Town entrance portals to the Catacombs, Caves, and Hell are unlocked from the start of a Single Player campaign for fluid session routing.
 
 ---
 
