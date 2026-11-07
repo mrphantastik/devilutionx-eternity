@@ -22,7 +22,11 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 * Both branches utilize pure vanilla Diablo I drop and affix tables.
 * Out-of-place and cartoonish *Hellfire* sprites have been replaced with proper, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
 
-**Dynamic Weather & Environmental Atmosphere (WIP):** Introduces real-time ambient weather layers across Sanctuary, currently featuring dynamic surface rainfall and surface-splash particle effects throughout Tristram.
+---
+
+### 🌧️ Dynamic Weather & Environmental Atmosphere (WIP)
+* **Tristram Rainfall:** Real-time ambient rainfall layer across the surface town, featuring directional precipitation and procedural water-splash particle FX on collision.
+* **Biome Atmospheric Layers:** Foundation laid for area-specific environmental particle layers (ash, embers, and underground mist).
 
 ---
 
