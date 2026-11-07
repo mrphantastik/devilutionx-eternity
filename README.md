@@ -25,7 +25,7 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 ---
 
 ### 🌧️ Dynamic Weather & Environmental Atmosphere (WIP)
-* **Tristram Rainfall:** Real-time ambient rainfall layer across the surface town, featuring directional precipitation and procedural water-splash particle FX on collision.
+* **Tristram Rainfall:** Real-time ambient rainfall layer across town.
 * **Biome Atmospheric Layers:** Foundation laid for area-specific environmental particle layers (ash, embers, and underground mist).
 
 ---
