@@ -13,7 +13,7 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 ## Key Features
 
 ### 🎧 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
-* **OpenAL Soft + EFX Environmental Reverb:** Every dungeon tier features custom acoustic reverberation profiles (`AL_EFFECT_EAXREVERB`) - from subtle open-air reflections in Tristram to cavernous stone echoes in the Cathedral, suffocating damp crypts, roaring magma caves, booming abyssal halls in Hell, and organic resonance in the Hive.
+* **OpenAL Soft + EFX Environmental Reverb:** Every dungeon tier features custom acoustic reverberation profiles.
 * **Dynamic Wall Occlusion:** Sound sources originating behind solid dungeon geometry are dynamically muffled using EFX low-pass filtering while preserving open-air corridor travel.
 * **Surround Sound & Headphone HRTF:** Native 3D positional audio with full support for multichannel speaker layouts and binaural HRTF.
 
