@@ -61,5 +61,5 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 * [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as rain, ambient fog, drifting ash, and cavern embers).
 * [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
-* [ ] **Cut Content Restoration:** Restoring select unreleased quests and dialogue lines.
+* [ ] **Cut Content Restoration:** Restoring select unreleased quests
 * [ ] **Dynamic Lighting Pipeline:** Implement a hybrid CPU G-Buffer with an OpenGL 3.3 post-lighting pass for real-time projectile glow, normal illumination, and environmental lightning flashes.
