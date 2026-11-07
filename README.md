@@ -32,7 +32,7 @@ Pairs the Rogue’s visuals, portraits, and voice lines with brutal frontline me
 ---
 
 ### 🏆 Hell Difficulty Endgame Drops
-Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three build-defining, class-tailored unique artifacts:
+Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three new unique artifacts:
 
 | Item | Base | Stats & Mechanics |
 | :--- | :--- | :--- |
