@@ -42,7 +42,7 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 | Item | Base | Stats & Mechanics |
 | :--- | :--- | :--- |
-| **Kadi's Fury** | Broad Sword | `+100% To Hit`, `+175% Damage`, `Fastest Attack`, `+4–16 Lightning Damage`, `Faster Walk`, `Resist All: -30%` |
+| **Kadi's Fury** | Broad Sword | `+100% To Hit`, `+175% Damage`, `Fastest Attack`, `+4–16 Lightning Damage`, `Faster Walk`, `Resist All: -30%`, `Indestructable` |
 | **Apostate's Crook** | War Staff | `+2 to All Spell Levels`, `+40 to Magic`, `+80 to Maximum Mana`, `Damage Reduced by 8`, `-50 to Armor Class`, `Resist All: -30%` |
 | **Loxley's Bend** | Long War Bow | `Knocks Target Back`, `+40 to Dexterity`, `+30 to Maximum Damage`, `Steals 5% Mana (works on ranged hits)`, `-40% Light Radius`, `-50 to Maximum Life` |
 
