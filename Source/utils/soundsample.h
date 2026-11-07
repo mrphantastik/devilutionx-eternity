@@ -77,7 +77,7 @@ public:
 	/**
 	 * @brief Start playing the sound with OpenAL 3D spatialization, HRTF, EFX reverb, and wall occlusion.
 	 */
-	bool PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded);
+	bool PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded, bool loop = false);
 
 	/**
 	 * @brief Stop playing the sound

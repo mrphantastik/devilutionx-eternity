@@ -15,9 +15,9 @@
   - Pure classic Diablo loot tables across Hive and Crypt (no oils, runes, or Hellfire-only base items)
   - Suppress Defiler quest pop-up monologues on all Hive levels
   - Hell Diablo exclusive unique weapon drops (`2%` independent chance each on Hell difficulty):
-    - `Kadi's Fury` (Broad Sword)
-    - `Apostate's Crook` (War Staff)
-    - `Loxley's Bend` (Long War Bow, with physical arrow life/mana steal support)
+    - `Kadi's Fury` (Broad Sword, `Indestructible`, unused `ITEM_MAGSWORD` inventory graphic)
+    - `Apostate's Crook` (War Staff, unused `ITEM_LONGSTAFF` inventory graphic)
+    - `Loxley's Bend` (Long War Bow, unused `ITEM_STLSHRTBOW` inventory graphic, with physical arrow life/mana steal support)
 - [x] **Phase 5: Female Barbarian Class**
   - Playable Barbarian class using classic Rogue sprites, portraits, inventory silhouette, and voiceovers
   - Full Barbarian stats, innate resistances, two-handed weapon mastery, and Rage skill
@@ -25,7 +25,16 @@
   - Keep unused vanilla monster models with original palettes (Spider Lords, Torchants, Bone Demons, Devil Kin Brutes, Invisible Lords, Satyr Lords)
   - Replace remaining Hellfire monsters with matched vanilla dark-fantasy counterparts (including Magma Demons in the Hive and Mages in the Crypt) while keeping Hellfire projectiles
   - Fix Na-Krul death freeze and loopback item validation warning
-- [x] **Phase 7: OpenAL Soft + EFX Spatial Audio, Reverb & HRTF**
-  - OpenAL Soft 1.23.1 static audio backend with `ALC_EXT_EFX` (`AL_EFFECT_EAXREVERB`) environmental reverb per dungeon type (Town, Cathedral, Catacombs, Caves, Hell, Hive, Crypt)
+- [x] **Phase 7: OpenAL Soft + EFX Spatial Audio, Reverb, Headphone Mode (HRTF) & Restored Footstep SFX**
+  - OpenAL Soft 1.23.1 static audio backend with `ALC_EXT_EFX` (`AL_EFFECT_EAXREVERB`) environmental reverb per dungeon type (Town, Cathedral, Catacombs, Caves, Hell, Hive, Crypt) and 3-state intensity toggle (`Normal`, `High`, `OFF`)
   - EFX Low-Pass (`AL_FILTER_LOWPASS`) line-of-sight wall occlusion muffling in dungeons
-  - 3D isometric positional audio, surround sound, and binaural HRTF (`ALC_SOFT_HRTF` + `AL_SOFT_source_spatialize`) with in-game Audio menu toggles
+  - Full-fidelity 3D positional audio (`BSinc24` resampling, 2D/self stereo direct HRTF bypass, HRIR comb-notch de-coloration, and wide horizontal-plane azimuth + deepened head shadow) with live in-game `Reverb` and `Headphone Mode (HRTF)` menu toggles
+  - Restored 4-variation randomized player footstep sounds (`sfx\misc\walk1.wav` – `walk4.wav`) in dungeons and Town
+- [x] **Phase 8: Tristram Weather & Environmental Particle System (Rain, Puddle Splashes, Steam Fog & Thunder)**
+  - Always-active Light Rain & Heavy Rain simulation in Tristram (+35% raindrop intensity, rolled on new game and persisted until the player spends >= 1 minute in a dungeon)
+  - Camera-compensated 3-layer falling raindrop streaks with 75%/50%/25% 8-bit palette transparency blending
+  - Precipitation / Steam Fog: non-overlapping world-space drifting 4-puff vapor ribbons (-30% count, +20% size, +35% transparency) and curling 5-puff rising ground-evaporation wisps (-40% count, -35% size, +50% transparency) with scanline-free 12.5%/6.25% palette transparency
+  - Localized compact, semi-transparent 5-stage isometric puddle splash animations (-35% count, -50% size, +50% transparency) on walkable outdoor ground tiles rendered in `DrawCell` after `mt[0..1]`
+  - Full-screen distant lightning palette flashes (`system_palette`, every 30–60s) with multi-strike flicker and speed-of-sound delayed thunder claps (+35% delay: `sfx\misc\thundera.wav` in Light Rain, `sfx\misc\thunderb.wav` in Heavy Rain)
+  - Seamless ambient looping playback of `sfx\misc\RainLightLoop.wav` and `sfx\misc\RainHeavyLoop.wav` (cleanly stopped on dungeon entry or quitting to the main menu)
+- [ ] **Phase 9 (Upcoming): Dungeon Particle & Atmospheric Effects**

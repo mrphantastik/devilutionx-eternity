@@ -3962,6 +3962,8 @@ void DrawUniqueInfo(const Surface &out)
 	for (const auto &power : uitem.powers) {
 		if (power.type == IPL_INVALID)
 			break;
+		if (power.type == IPL_INVCURS && IsAnyOf(curruitem._iUid, UITEM_KADISFURY, UITEM_APOSTATESCROOK, UITEM_LOXLEYSBEND))
+			continue;
 		rect.position.y += 2 * 12;
 		DrawString(out, PrintItemPower(power.type, curruitem), rect, UiFlags::ColorWhite | UiFlags::AlignCenter);
 	}

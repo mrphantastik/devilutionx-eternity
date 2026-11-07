@@ -116,6 +116,7 @@ set(libdevilutionx_SRCS
   engine/render/dun_render.cpp
   engine/render/scrollrt.cpp
   engine/render/text_render.cpp
+  engine/render/weather.cpp
 
   items/validation.cpp
 

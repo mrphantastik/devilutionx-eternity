@@ -449,7 +449,7 @@ void InitLevelChange(Player &player)
 bool DoWalk(Player &player, int variant)
 {
 	// Play walking sound effect on certain animation frames
-	if (*sgOptions.Audio.walkingSound && (leveltype != DTYPE_TOWN || sgGameInitInfo.bRunInTown == 0)) {
+	if (*sgOptions.Audio.walkingSound) {
 		if ((player.AnimInfo.currentFrame == 0
 		        || player.AnimInfo.currentFrame == 4)
 		    && player.AnimInfo.tickCounterOfCurrentFrame == 0) {

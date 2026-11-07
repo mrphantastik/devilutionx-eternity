@@ -25,6 +25,7 @@
 #include "diablo.h"
 #include "discord/discord.h"
 #include "doom.h"
+#include "effects.h"
 #include "encrypt.h"
 #include "engine/backbuffer_state.hpp"
 #include "engine/clx_sprite.hpp"
@@ -34,6 +35,7 @@
 #include "engine/load_cel.hpp"
 #include "engine/load_file.hpp"
 #include "engine/random.hpp"
+#include "engine/render/weather.h"
 #include "engine/sound.h"
 #include "error.h"
 #include "gamemenu.h"
@@ -162,6 +164,8 @@ void StartGame(interface_mode uMsg)
 	LoadDebugGFX();
 #endif
 	assert(HeadlessMode || ghMainWnd);
+	OnWeatherNewGame();
+	sound_stop();
 	music_stop();
 	InitMonsterHealthBar();
 	InitXPBar();
@@ -192,6 +196,8 @@ void FreeGame()
 	FreeDebugGFX();
 #endif
 	FreeGameMem();
+	ResetWeatherState();
+	sound_stop();
 	stream_stop();
 	music_stop();
 }
@@ -2741,6 +2747,7 @@ void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 {
 	_music_id neededTrack = GetLevelMusic(leveltype);
 	ClearFloatingNumbers();
+	OnWeatherLevelLoad(firstflag, leveltype);
 
 	if (neededTrack != sgnMusicTrack)
 		music_stop();

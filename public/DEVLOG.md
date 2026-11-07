@@ -287,4 +287,65 @@
   - Replaced the boolean Reverb toggle with `enum class ReverbLevel : uint8_t { Off = 0, Normal = 1, High = 2 }`.
   - Updated `LoadEaxReverbPreset()` and `ApplyOpenAlReverbOption()` so switching between **`Normal`** (`AL_EFFECTSLOT_GAIN = 0.45F`, `effectGain * 0.68F`, `lateReverbGain * 0.50F`, `reflectionsGain * 0.75F`, `decayTime * 0.75F`), **`High`** (`AL_EFFECTSLOT_GAIN = 1.00F`, `effectGain * 1.00F`, `lateReverbGain * 1.25F`, `reflectionsGain * 1.50F`, `decayTime * 1.20F`), and **`OFF`** (`0.00F`) immediately reloads the EAX reverb effect into `gEfxSlot` with a clear perceptual difference.
 
+### 7.6 Restored Randomized Footstep Sounds (`walk1.wav` – `walk4.wav`) & Town Footsteps
+- **File:** `Source/effects.h` & `Source/effects.cpp`
+  - Restored `PS_WALK2`, `PS_WALK3`, and `PS_WALK4` in `enum _sfx_id` and `sgSFX[]` (`"sfx\\misc\\walk1.wav"` through `"sfx\\misc\\walk4.wav"`, all preloaded via `sfx_MISC`).
+  - Enabled `case PS_WALK1:` in `RndSFX(_sfx_id psfx)` to randomize across all 4 footstep variations (`PS_WALK1..PS_WALK4`) with consecutive-repeat prevention (`lastWalkRand`) so two identical footstep samples never play back-to-back.
+- **File:** `Source/player.cpp` — `DoWalk()`
+  - Removed the `(leveltype != DTYPE_TOWN || sgGameInitInfo.bRunInTown == 0)` restriction in `DoWalk()` so player footsteps play in Town (`currentFrame == 4` once per 4-tick tile when `Run in Town` is active, matching the 4-tick footstep cadence of normal walking).
 
+---
+
+## Phase 8: Tristram Weather & Environmental Particle System (Rain, Puddle Splashes, Distant Lightning & Ambient Loops)
+
+### 8.1 Dynamic Light Rain & Heavy Rain Simulation (`Source/engine/render/weather.h`, `Source/engine/render/weather.cpp`)
+- **Session-Persisted Rain Intensity + 1-Minute Dungeon Rule (`OnWeatherNewGame`, `OnWeatherLevelLoad`):**
+  - Tristram (`leveltype == DTYPE_TOWN && !setlevel`) always has active rain in either `Light` or `Heavy` mode, rolled randomly upon starting/loading a game (`OnWeatherNewGame()` / `OnWeatherLevelLoad(true, ...)`).
+  - The rolled rain intensity **persists indefinitely while in Tristram** and can only re-roll when the player returns to Tristram after spending **at least 1 minute (`60,000 ms`) in a dungeon** (`gAccumulatedDungeonMs >= MinDungeonTimeForWeatherChangeMs`).
+- **Camera-Compensated Multi-Layer Raindrop Streaks (+35% Intensity, `DrawWeatherAir`):**
+  - Rendered in `DrawGame()` (`Source/engine/render/scrollrt.cpp`) after `DrawTileContent()` and before `Zoom()` so raindrops scale naturally with viewport zoom and never draw over the bottom HUD or open UI panels.
+  - Tracks camera world-space pixel movement (`startTilePosition.worldToScreen() - offset`) so walking or running through Tristram moves the viewport naturally through the falling rain sheet rather than dragging raindrops with the screen.
+  - Simulates 3 depth layers (`far/fine`, `mid`, `near/bright`) of slanted raindrop streaks (`132` active drops in Light Rain, `360` in Heavy Rain — increased by +35%) using 75%, 50%, and 25% hardware-free 8-bit palette blending (`paletteTransparencyLookup`).
+
+### 8.2 Localized 5-Stage Isometric Puddle Splash Animations (`DrawWeatherGroundTile`)
+- **Root Cause & Fix for Missing Ground Splashes (`Source/engine/render/scrollrt.cpp`):**
+  - In DevilutionX's renderer, `DrawTileContent()` -> `DrawDungeon()` -> `DrawCell()` re-renders the ground microtiles (`mt[0]` and `mt[1]`) for every `TransparentSquare` tile in Town, which overwrote anything drawn between `DrawFloor()` and `DrawTileContent()`.
+  - Moved ground splash rendering into `DrawDungeon()` via `DrawWeatherGroundTile(out, tilePosition, targetBufferPosition)` **immediately after `DrawCell()`**. This draws splashes directly onto each walkable outdoor tile's freshly rendered floor pixels while still allowing objects, items, players, NPCs, tree canopies (`dSpecial`), and all closer isometric rows (`i + 1..rows`) to naturally occlude splashes behind them.
+- **Deterministic Per-Tile Spawning & Compact 5-Stage Semi-Transparent Splash Animation:**
+  - Uses a fast spatial+temporal hash per walkable outdoor Town tile (`!TileHasAny(dPiece[x][y], TileProperties::Solid)`) with tuned spawn density (`136‰` per slot in Light Rain, `299‰` per slot in Heavy Rain — reduced by 35% from initial pass).
+  - Reduced splash radii by 50% (`rx = 1..6`, `ry = 0..3`) and added +50% transparency (`PlotBlended50`, `PlotBlended25`, and `PlotBlended12` using `PAL16_GRAY + 2..6`, `PAL16_BLUE + 3..6`) across 5 stages (`260 ms` lifecycle):
+    - **Stage 0:** Compact 50%/25%-blended impact water bead + 2 tiny crown droplets.
+    - **Stage 1:** Compact 2:1 isometric inner ring (`rx = 2, ry = 1`).
+    - **Stage 2:** Expanding 2:1 isometric ripple (`rx = 3..4, ry = 1..2`).
+    - **Stage 3:** Soft 25%/12.5%-blended isometric ripple (`rx = 4..5, ry = 2`).
+    - **Stage 4:** Dissipating outer ring (`rx = 5..6, ry = 2..3`) at 25%/12.5% opacity.
+
+### 8.3 Precipitation / Steam Fog (`DrawWeatherGroundTile`, `DrawWeatherAir`)
+- **Non-Overlapping World-Anchored Drifting Steam Fog Banks (`SteamFogBank`):**
+  - Reduced bank count by 30% (`9` in Light Rain, `14` in Heavy Rain), increased size by +20% (`rx = 46..79, ry = 18..30`), and increased transparency by +35% (`Blend12` 12.5% opaque inner core + `Blend6` 6.25% opaque outer feather).
+  - Arranged on a strict `5x3` staggered world-space lattice (`FogWorldWrapW = 1500, FogWorldWrapH = 900`, `300x300 px` per cell) with uniform drift velocity plus a screen-space bounding-box guard (`DrawnFogRect`) so Steam Fog Banks **never overlap**.
+- **Curling Rising Ground-Evaporation Wisps (`DrawGroundSteamWisp`):**
+  - Reduced wisp count by an additional 40% (`19%` outdoor tile density), reduced size by 35% (`riseY = 18 px`, `rx = 1..4 px`, `ry = 1..2 px`), and increased transparency by 50% (`Blend12` 12.5% core + `Blend6` 6.25% halo) across 5 ascending S-curling vapor puffs, rendered inside `DrawCell()` after `mt[0..1]` and before `mt[2..15]` so fences and archways properly occlude them.
+
+### 8.4 Full-Screen Distant Lightning Flashes (30–60s Interval) & Delayed Thunder (`Source/engine/palette.h`, `Source/engine/palette.cpp`, `Source/engine/render/weather.cpp`)
+- **High-Visibility `system_palette` Flash Envelope (30–60s Random Interval):**
+  - Exposed `IsPaletteFadedIn()` in `Source/engine/palette.h` / `Source/engine/palette.cpp`.
+  - Strikes randomly every **30 to 60 seconds** (`30000 + GenerateRnd(30001)` ms), triggering a full-screen cool-white / electric slate-blue illumination flash across `system_palette[1..254]` via `palette_update(0, 256)` (`60 ms` peak flash followed by a `55 ms` afterglow decay) with up to `1.65x` luminance boost + additive cool RGB shift (`+98 R, +119 G, +166 B` in Heavy Rain) and a 50% (Heavy) / 25% (Light) chance of a secondary double-strike flash `125–170 ms` later.
+  - Automatically restores the exact gamma-corrected `logical_palette` after the flash or immediately upon leaving Town without mutating `logical_palette` or `orig_palette`.
+- **Speed-of-Sound Delayed Thunder Audio (`LS_THUNDERA` & `LS_THUNDERB`, +35% Delay):**
+  - Added `LS_THUNDERA` (`"sfx\\misc\\thundera.wav"`) and `LS_THUNDERB` (`"sfx\\misc\\thunderb.wav"`) to `_sfx_id` and `sgSFX[]`, played via `PlayWeatherSFX()` (`applyReverb = false` since reverb is baked into the WAV assets).
+  - Primary lightning strikes schedule an acoustic speed-of-sound delayed thunder clap (+35% propagation delay): `thundera.wav` (`1553–2498 ms` delay, distant rumble) during Light Rain and `thunderb.wav` (`608–1215 ms` delay, closer thunderclap) during Heavy Rain.
+
+### 8.5 Ambient Rain Audio Loops (`sfx\misc\RainLightLoop.wav` & `sfx\misc\RainHeavyLoop.wav`)
+- **File:** `Source/effects.h`, `Source/effects.cpp`, `Source/diablo.cpp`, `Source/utils/soundsample.h`, `Source/utils/soundsample.cpp`
+  - Added `LS_RAINLIGHT` (`"sfx\\misc\\RainLightLoop.wav"`) and `LS_RAINHEAVY` (`"sfx\\misc\\RainHeavyLoop.wav"`) to `_sfx_id` and `sgSFX[]`, with `AL_LOOPING = AL_TRUE` support in `SoundSample::PlayWith3D()` (`applyReverb = false`).
+  - Hooked `ResetWeatherState()` and `sound_stop()` into `FreeGame()` and `StartGame()` in `Source/diablo.cpp`, `OnWeatherLevelLoad()` into `LoadGameLevel()`, and non-game stop guards into `sound_update()` and `effects_play_sound()` in `Source/effects.cpp` so rain and thunder sounds stop immediately when quitting to the Main Menu or entering a dungeon.
+
+### 8.6 Custom Unique Weapon Unused `objcurs.cel` Graphics (`ITEM_MAGSWORD`, `ITEM_LONGSTAFF`, `ITEM_STLSHRTBOW`), `Kadi's Fury` Indestructibility & `Headphone Mode (HRTF)` Label
+- **File:** `Source/itemdat.h`, `Source/itemdat.cpp`, `Source/items.cpp`, `Source/loadsave.cpp`, `Source/pack.cpp`
+  - Defined the unused `objcurs.cel` cursor graphics from the Hellfire source code `ITEM_IDS` enum (`ITEM_MAGSWORD = 73`, `ITEM_STLSHRTBOW = 120`, `ITEM_LONGSTAFF = 125`) in `enum item_cursor_graphic` and expanded `UniqueItem::powers` to 8 slots.
+  - **Kadi's Fury (`UITEM_KADISFURY`):** Added `{ IPL_INDESTRUCTIBLE }` (`Indestructible`) and `{ IPL_INVCURS, ITEM_MAGSWORD }` (`objcurs.cel` magic sword graphic `73`), and updated `LoadItemData()` / `UnPackItem()` so existing saved copies automatically upgrade to `DUR_INDESTRUCTIBLE` and `ITEM_MAGSWORD`.
+  - **Apostate's Crook (`UITEM_APOSTATESCROOK`):** Assigned `{ IPL_INVCURS, ITEM_LONGSTAFF }` (`objcurs.cel` unused staff graphic `125`) on creation and save load.
+  - **Loxley's Bend (`UITEM_LOXLEYSBEND`):** Assigned `{ IPL_INVCURS, ITEM_STLSHRTBOW }` (`objcurs.cel` steel short bow graphic `120`) on creation and save load.
+- **File:** `Source/options.cpp` & `Source/gamemenu.cpp`
+  - Renamed the HRTF option label to **`Headphone Mode (HRTF)`** in both `Settings -> Audio` and the in-game `ESC -> Options` menu (`Headphone Mode (HRTF): ON/OFF`).

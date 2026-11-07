@@ -151,6 +151,7 @@ enum item_cursor_graphic : uint8_t {
 	ICURS_SABRE                       = 67,
 	ICURS_SPIKED_CLUB                 = 70,
 	ICURS_SCIMITAR                    = 72,
+	ITEM_MAGSWORD                     = 73,
 	ICURS_FULL_HELM                   = 75,
 	ICURS_MAGIC_ROCK                  = 76,
 	ICURS_THE_UNDEAD_CROWN            = 78,
@@ -183,10 +184,12 @@ enum item_cursor_graphic : uint8_t {
 	ICURS_SHORT_BOW                   = 118,
 	ICURS_LONG_BATTLE_BOW             = 119,
 	ICURS_LONG_WAR_BOW                = 120,
+	ITEM_STLSHRTBOW                   = 120,
 	ICURS_WAR_HAMMER                  = 121,
 	ICURS_MAUL                        = 122,
 	ICURS_LONG_STAFF                  = 123,
 	ICURS_WAR_STAFF                   = 124,
+	ITEM_LONGSTAFF                    = 125,
 	ICURS_TAVERN_SIGN                 = 126,
 	ICURS_HARD_LEATHER_ARMOR          = 127,
 	ICURS_RAGS                        = 128,
@@ -593,7 +596,7 @@ struct UniqueItem {
 	int8_t UIMinLvl;
 	uint8_t UINumPL;
 	int UIValue;
-	ItemPower powers[6];
+	ItemPower powers[8];
 };
 
 extern const ItemData AllItemsList[];

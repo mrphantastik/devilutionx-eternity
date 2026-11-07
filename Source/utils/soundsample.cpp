@@ -286,7 +286,7 @@ bool SoundSample::Play(int numIterations)
 	return true;
 }
 
-bool SoundSample::PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded)
+bool SoundSample::PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, int deltaX, int deltaY, bool isPositional, bool applyReverb, bool isOccluded, bool loop)
 {
 	const int combinedLogVol = logSoundVolume + logUserVolume * (ATTENUATION_MIN / VOLUME_MIN);
 	SetVolume(combinedLogVol, ATTENUATION_MIN, 0);
@@ -342,17 +342,18 @@ bool SoundSample::PlayWith3D(int logSoundVolume, int logUserVolume, int logPan, 
 			alSource3i(al_source_, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
 		}
 
-		return Play(1);
+		return Play(loop ? 0 : 1);
 	}
 
 	SetStereoPosition(logPan);
-	return Play(1);
+	return Play(loop ? 0 : 1);
 }
 
 void SoundSample::Stop()
 {
 	if (al_source_ != 0 && IsOpenAlActive()) {
 		alSourceStop(al_source_);
+		alSourcei(al_source_, AL_LOOPING, AL_FALSE);
 		return;
 	}
 	if (stream_)
@@ -402,10 +403,10 @@ int SoundSample::SetChunkStream(std::string filePath, bool isMp3, bool logErrors
 {
 	Release();
 
-	// Decode short speech/boss taunt streams (< 2 MB) directly into OpenAL Soft so they benefit from EFX reverb in dungeons
+	// Decode speech/boss taunt and ambient weather loop streams (< 16 MB) directly into OpenAL Soft
 	if (IsOpenAlActive()) {
 		AssetRef ref = FindAsset(filePath.c_str());
-		if (ref.ok() && ref.size() > 0 && ref.size() <= 2 * 1024 * 1024) {
+		if (ref.ok() && ref.size() > 0 && ref.size() <= 16 * 1024 * 1024) {
 			const std::size_t size = ref.size();
 			AssetHandle assetHandle = OpenAsset(std::move(ref));
 			if (assetHandle.ok()) {

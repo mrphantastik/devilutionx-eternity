@@ -653,7 +653,7 @@ AudioOptions::AudioOptions()
               { ReverbLevel::Normal, N_("Normal") },
               { ReverbLevel::High, N_("High") },
           })
-    , hrtf("HRTF", OptionEntryFlags::None, N_("HRTF"), N_("Enable 3D binaural HRTF spatial audio for headphones."), true)
+    , hrtf("HRTF", OptionEntryFlags::None, N_("Headphone Mode (HRTF)"), N_("Enable 3D binaural HRTF spatial audio for headphones."), true)
     , sampleRate("Sample Rate", OptionEntryFlags::CantChangeInGame, N_("Sample Rate"), N_("Output sample rate (Hz)."), DEFAULT_AUDIO_SAMPLE_RATE, { 22050, 44100, 48000 })
     , channels("Channels", OptionEntryFlags::Invisible | OptionEntryFlags::CantChangeInGame, N_("Channels"), N_("Number of output channels."), DEFAULT_AUDIO_CHANNELS, { 1, 2 })
     , bufferSize("Buffer Size", OptionEntryFlags::CantChangeInGame, N_("Buffer Size"), N_("Buffer size (number of frames per channel)."), DEFAULT_AUDIO_BUFFER_SIZE, { 1024, 2048, 5120 })

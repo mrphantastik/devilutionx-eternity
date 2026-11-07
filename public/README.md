@@ -33,10 +33,18 @@ Defeating **Diablo on Hell difficulty** grants an independent **2% (1-in-50)** c
 - **Loxley's Bend** (*Long War Bow*)
   - `Knocks Target Back`, `+40 to Dexterity`, `+30 to Maximum Damage`, `Steals 5% Mana` (works on bow attacks), `-40% Light Radius`, `-50 to Maximum Life`
 
-### 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
-- **OpenAL Soft + EFX Environmental Reverb:** Every area features tailored acoustic reverberation (`AL_EFFECT_EAXREVERB`)—from subtle open-air reflections in Tristram to Gothic stone echoes in the Cathedral, claustrophobic tombs in the Catacombs, cavernous Caves, booming abyssal halls in Hell, damp organic Hive tunnels, and resonant Crypt vaults.
+### 3D Spatial Audio, EFX Dungeon Reverb, Binaural HRTF & Restored Footsteps
+- **OpenAL Soft + EFX Environmental Reverb:** Every area features tailored acoustic reverberation (`AL_EFFECT_EAXREVERB`)—from subtle open-air reflections in Tristram to Gothic stone echoes in the Cathedral, claustrophobic tombs in the Catacombs, cavernous Caves, booming abyssal halls in Hell, damp organic Hive tunnels, and resonant Crypt vaults, with a live in-game **Reverb (`Normal` / `High` / `OFF`)** toggle.
 - **Dynamic Wall Occlusion:** Sounds originating behind solid dungeon walls are dynamically muffled via EFX low-pass filtering while preserving distant corridor reverberation.
-- **Surround Sound & Binaural HRTF:** Full 3D positional audio supporting multichannel surround speakers and binaural headphone HRTF (configurable in the in-game Audio Settings menu).
+- **Full-Fidelity Surround Sound & Binaural HRTF:** Wide-azimuth 3D positional audio (`BSinc24` resampling, uncolored stereo direct path for 2D/UI/self sounds, and deepened head-shadow separation) supporting multichannel surround speakers and binaural headphone HRTF with a live in-game **HRTF (`ON` / `OFF`)** toggle.
+- **Restored Randomized Footsteps:** Restores all 4 original footstep sound variations (`walk1.wav`–`walk4.wav`) with consecutive-repeat prevention across both dungeons and Town.
+
+### Atmospheric Weather & Environmental Effects
+- **Dynamic Tristram Rain (`Light` & `Heavy`):** Tristram features continuous rainfall that rolls either **Light Rain** or **Heavy Rain** upon starting a game and persists until you spend at least 1 minute exploring the dungeons, rendered with camera-compensated 3-layer raindrop streaks blended directly into the 8-bit palette.
+- **Precipitation & Steam Fog:** World-anchored drifting multi-lobe vapor banks and localized rising ground-evaporation wisps roll across Tristram using ordered 4x4 Bayer dithering and 25%/12.5% palette transparency blending.
+- **Localized Puddle Splash Animations:** Walkable outdoor ground tiles in Tristram spawn compact, semi-transparent 5-stage isometric puddle ripples (`50%`/`25%`/`12.5%` blended) that are naturally occluded behind trees, buildings, fences, NPCs, and players.
+- **Distant Sheet Lightning & Delayed Thunder:** Full-screen cool electric palette flashes with multi-strike flicker periodically illuminate Tristram during storms, followed by speed-of-sound delayed thunder (`sfx\misc\thundera.wav` in Light Rain, `sfx\misc\thunderb.wav` in Heavy Rain).
+- **Ambient Weather Audio Loops:** Seamless looping playback of `sfx\misc\RainLightLoop.wav` and `sfx\misc\RainHeavyLoop.wav` synchronized with active rainfall intensity.
 
 ---
 
@@ -44,3 +52,4 @@ Defeating **Diablo on Hell difficulty** grants an independent **2% (1-in-50)** c
 
 1. Copy `dx-eternity.exe` into your DevilutionX / *Diablo + Hellfire* folder containing `DIABDAT.MPQ` and the expansion `.mpq` archives (`hellfire.mpq`, `hfmonk.mpq`, `hfbard.mpq`, `hfbarb.mpq`, `hfmusic.mpq`, `hfvoice.mpq`).
 2. Run `dx-eternity.exe`.
+

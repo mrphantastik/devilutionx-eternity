@@ -86,8 +86,8 @@ const char *const ReverbToggleNames[] = {
 	N_("Reverb: High"),
 };
 const char *const HrtfToggleNames[] = {
-	N_("HRTF: ON"),
-	N_("HRTF: OFF"),
+	N_("Headphone Mode (HRTF): ON"),
+	N_("Headphone Mode (HRTF): OFF"),
 };
 
 void GamemenuUpdateSingle()

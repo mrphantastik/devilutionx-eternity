@@ -7,12 +7,14 @@
 
 #include <cstdint>
 
+#include "diablo.h"
 #include "engine/random.hpp"
 #include "engine/sound.h"
 #include "engine/sound_defs.hpp"
 #include "engine/sound_position.hpp"
 #include "init.h"
 #include "monster.h"
+#include "options.h"
 #include "player.h"
 #include "utils/stdcompat/algorithm.hpp"
 #include "utils/str_cat.hpp"
@@ -39,6 +41,9 @@ TSFX sgSFX[] = {
 	// clang-format off
 // _sfx_id          bFlags                     pszName                        pSnd
 /*PS_WALK1*/      { sfx_MISC,                  "sfx\\misc\\walk1.wav",        nullptr },
+/*PS_WALK2*/      { sfx_MISC,                  "sfx\\misc\\walk2.wav",        nullptr },
+/*PS_WALK3*/      { sfx_MISC,                  "sfx\\misc\\walk3.wav",        nullptr },
+/*PS_WALK4*/      { sfx_MISC,                  "sfx\\misc\\walk4.wav",        nullptr },
 /*PS_BFIRE*/      { sfx_MISC,                  "sfx\\misc\\bfire.wav",        nullptr },
 /*PS_TMAG*/       { sfx_MISC,                  "sfx\\misc\\tmag.wav",         nullptr },
 /*PS_SWING*/      { sfx_MISC,                  "sfx\\misc\\swing.wav",        nullptr },
@@ -146,8 +151,12 @@ TSFX sgSFX[] = {
 /*LS_TRAPDIS*/    { sfx_MISC,                  "sfx\\misc\\trapdis.wav",      nullptr },
 /*LS_TELEPORT*/   { sfx_MISC,                  "sfx\\misc\\teleport.wav",     nullptr },
 /*LS_WALLLOOP*/   { sfx_MISC,                  "sfx\\misc\\wallloop.wav",     nullptr },
-/*LS_LMAG*/       { sfx_MISC | sfx_HELLFIRE,   "sfx\\misc\\lmag.wav",         nullptr },
-/*TSFX_BMAID1*/   { sfx_STREAM,                "sfx\\towners\\bmaid01.wav",   nullptr },
+/*LS_LMAG*/       { sfx_MISC | sfx_HELLFIRE,   "sfx\\misc\\lmag.wav",          nullptr },
+/*LS_RAINLIGHT*/  { sfx_MISC,                  "sfx\\misc\\RainLightLoop.wav", nullptr },
+/*LS_RAINHEAVY*/  { sfx_MISC,                  "sfx\\misc\\RainHeavyLoop.wav", nullptr },
+/*LS_THUNDERA*/   { sfx_MISC,                  "sfx\\misc\\thundera.wav",      nullptr },
+/*LS_THUNDERB*/   { sfx_MISC,                  "sfx\\misc\\thunderb.wav",      nullptr },
+/*TSFX_BMAID1*/   { sfx_STREAM,                "sfx\\towners\\bmaid01.wav",    nullptr },
 /*TSFX_BMAID2*/   { sfx_STREAM,                "sfx\\towners\\bmaid02.wav",   nullptr },
 /*TSFX_BMAID3*/   { sfx_STREAM,                "sfx\\towners\\bmaid03.wav",   nullptr },
 /*TSFX_BMAID4*/   { sfx_STREAM,                "sfx\\towners\\bmaid04.wav",   nullptr },
@@ -1067,6 +1076,15 @@ _sfx_id RndSFX(_sfx_id psfx)
 	case PS_MONK14:
 		nRand = 3;
 		break;
+	case PS_WALK1: {
+		static int lastWalkRand = -1;
+		int walkRand = GenerateRnd(4);
+		if (walkRand == lastWalkRand) {
+			walkRand = (walkRand + 1 + GenerateRnd(3)) % 4;
+		}
+		lastWalkRand = walkRand;
+		return static_cast<_sfx_id>(PS_WALK1 + walkRand);
+	}
 	default:
 		return psfx;
 	}
@@ -1135,6 +1153,62 @@ void PlaySfxLoc(_sfx_id psfx, Point position, bool randomizeByCategory)
 	PlaySfxPriv(&sgSFX[psfx], true, position);
 }
 
+void PlayWeatherSFX(_sfx_id psfx, int lVolume)
+{
+	if (!gbSndInited || !gbSoundOn || !gbRunGame || leveltype != DTYPE_TOWN || setlevel || psfx < 0) {
+		return;
+	}
+
+	TSFX &sfx = sgSFX[psfx];
+	if (sfx.pSnd == nullptr) {
+		sfx.pSnd = sound_file_load(sfx.pszName);
+	}
+	if (sfx.pSnd == nullptr || !sfx.pSnd->DSB.IsLoaded()) {
+		return;
+	}
+
+	sfx.pSnd->DSB.PlayWith3D(lVolume, *sgOptions.Audio.soundVolume, 0, 0, 0, /*isPositional=*/false, /*applyReverb=*/false, /*isOccluded=*/false, /*loop=*/false);
+}
+
+void PlayLoopingSFX(_sfx_id psfx, int lVolume)
+{
+	if (!gbSndInited || !gbSoundOn || psfx < 0) {
+		return;
+	}
+
+	TSFX &sfx = sgSFX[psfx];
+	if (sfx.pSnd == nullptr) {
+		sfx.pSnd = sound_file_load(sfx.pszName);
+	}
+	if (sfx.pSnd == nullptr || !sfx.pSnd->DSB.IsLoaded()) {
+		return;
+	}
+
+	const int combinedLogVol = lVolume + *sgOptions.Audio.soundVolume * (ATTENUATION_MIN / VOLUME_MIN);
+	sfx.pSnd->DSB.SetVolume(combinedLogVol, ATTENUATION_MIN, 0);
+
+	if (!diablo_is_focused()) {
+		sfx.pSnd->DSB.Mute();
+	} else {
+		sfx.pSnd->DSB.Unmute();
+	}
+
+	if (!sfx.pSnd->isPlaying()) {
+		sfx.pSnd->DSB.PlayWith3D(lVolume, *sgOptions.Audio.soundVolume, 0, 0, 0, /*isPositional=*/false, /*applyReverb=*/false, /*isOccluded=*/false, /*loop=*/true);
+	}
+}
+
+void StopSFX(_sfx_id psfx)
+{
+	if (!gbSndInited || psfx < 0) {
+		return;
+	}
+	TSFX &sfx = sgSFX[psfx];
+	if (sfx.pSnd != nullptr && sfx.pSnd->DSB.IsLoaded()) {
+		sfx.pSnd->DSB.Stop();
+	}
+}
+
 void sound_stop()
 {
 	if (!gbSndInited)
@@ -1151,6 +1225,13 @@ void sound_update()
 {
 	if (!gbSndInited) {
 		return;
+	}
+
+	if (!gbRunGame || !gbSoundOn || leveltype != DTYPE_TOWN || setlevel) {
+		StopSFX(LS_RAINLIGHT);
+		StopSFX(LS_RAINHEAVY);
+		StopSFX(LS_THUNDERA);
+		StopSFX(LS_THUNDERB);
 	}
 
 	StreamUpdate();
@@ -1206,6 +1287,13 @@ void effects_play_sound(_sfx_id id)
 {
 	if (!gbSndInited || !gbSoundOn) {
 		return;
+	}
+
+	if (!gbRunGame) {
+		StopSFX(LS_RAINLIGHT);
+		StopSFX(LS_RAINHEAVY);
+		StopSFX(LS_THUNDERA);
+		StopSFX(LS_THUNDERB);
 	}
 
 	TSFX &sfx = sgSFX[id];

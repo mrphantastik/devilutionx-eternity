@@ -123,6 +123,9 @@ enum class HeroSpeech : uint8_t {
 
 enum _sfx_id : int16_t {
 	PS_WALK1,
+	PS_WALK2,
+	PS_WALK3,
+	PS_WALK4,
 	PS_BFIRE,
 	PS_TMAG,
 	PS_SWING,
@@ -231,6 +234,10 @@ enum _sfx_id : int16_t {
 	LS_TELEPORT,
 	LS_WALLLOOP,
 	LS_LMAG,
+	LS_RAINLIGHT,
+	LS_RAINHEAVY,
+	LS_THUNDERA,
+	LS_THUNDERB,
 	TSFX_BMAID1,
 	TSFX_BMAID2,
 	TSFX_BMAID3,
@@ -1082,6 +1089,9 @@ bool effect_is_playing(int nSFX);
 void stream_stop();
 void PlaySFX(_sfx_id psfx);
 void PlaySfxLoc(_sfx_id psfx, Point position, bool randomizeByCategory = true);
+void PlayWeatherSFX(_sfx_id psfx, int lVolume = 0);
+void PlayLoopingSFX(_sfx_id psfx, int lVolume = 0);
+void StopSFX(_sfx_id psfx);
 void sound_stop();
 void sound_update();
 void effects_cleanup_sfx();

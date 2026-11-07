@@ -330,6 +330,18 @@ void LoadItemData(LoadHelper &file, Item &item)
 		item._iDamAcFlags = ItemSpecialEffectHf::FastWalk;
 	else
 		item._iDamAcFlags = ItemSpecialEffectHf::None;
+
+	if (item._iMagical == ITEM_QUALITY_UNIQUE) {
+		if (item._iUid == UITEM_KADISFURY) {
+			item._iCurs = ITEM_MAGSWORD;
+			item._iDurability = DUR_INDESTRUCTIBLE;
+			item._iMaxDur = DUR_INDESTRUCTIBLE;
+		} else if (item._iUid == UITEM_APOSTATESCROOK) {
+			item._iCurs = ITEM_LONGSTAFF;
+		} else if (item._iUid == UITEM_LOXLEYSBEND) {
+			item._iCurs = ITEM_STLSHRTBOW;
+		}
+	}
 	UpdateHellfireFlag(item, item._iIName);
 }
 

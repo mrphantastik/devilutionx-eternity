@@ -332,8 +332,13 @@ void UnPackItem(const ItemPack &packedItem, const Player &player, Item &item, bo
 		item = {};
 		RecreateItem(player, item, idx, SDL_SwapLE16(packedItem.iCreateInfo), SDL_SwapLE32(packedItem.iSeed), SDL_SwapLE16(packedItem.wValue), isHellfire);
 		item._iIdentified = (packedItem.bId & 1) != 0;
-		item._iMaxDur = packedItem.bMDur;
-		item._iDurability = ClampDurability(item, packedItem.bDur);
+		if (item._iMagical == ITEM_QUALITY_UNIQUE && item._iUid == UITEM_KADISFURY) {
+			item._iMaxDur = DUR_INDESTRUCTIBLE;
+			item._iDurability = DUR_INDESTRUCTIBLE;
+		} else {
+			item._iMaxDur = packedItem.bMDur;
+			item._iDurability = ClampDurability(item, packedItem.bDur);
+		}
 		item._iMaxCharges = clamp<int>(packedItem.bMCh, 0, item._iMaxCharges);
 		item._iCharges = clamp<int>(packedItem.bCh, 0, item._iMaxCharges);
 	}
