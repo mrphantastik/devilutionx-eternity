@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="new-splash.jpg" alt="Alt Text" width="100%">
+</p>
+
 # DX:Eternity
 
 **DX:Eternity** is a curated gameplay, atmospheric, and audiovisual overhaul built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine. 
