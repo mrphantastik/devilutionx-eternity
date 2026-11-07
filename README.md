@@ -22,6 +22,8 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 * Both branches utilize pure vanilla Diablo I drop and affix tables.
 * Out-of-place and cartoonish *Hellfire* sprites have been replaced with proper, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
 
+**Dynamic Weather & Environmental Atmosphere (WIP):** Introduces real-time ambient weather layers across Sanctuary, currently featuring dynamic surface rainfall and surface-splash particle effects throughout Tristram.
+
 ---
 
 ### ⚔️ New Class Archetype: The Female Barbarian
@@ -56,3 +58,4 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 * [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as rain, ambient fog, drifting ash, and cavern embers).
 * [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
 * [ ] **Cut Content Restoration:** Restoring select unreleased quests and dialogue lines.
+* [ ] **Dynamic Lighting Pipeline:** Implement a hybrid CPU G-Buffer with an OpenGL 3.3 post-lighting pass for real-time projectile glow, normal illumination, and environmental lightning flashes.
