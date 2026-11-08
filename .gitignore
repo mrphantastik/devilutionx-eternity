@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+public/
+coverage/
+libsodium-win32/
+libsodium-win64/
+.DS_Store
+*.log
+.env*
+!.env.example
+package.json
