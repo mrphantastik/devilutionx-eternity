@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/new-splash.png" alt="Alt Text" width="70%">
+  <img src="assets/new-splash.png" alt="Alt Text" width="70%">
 </p>
 
 # DX:Eternity.
