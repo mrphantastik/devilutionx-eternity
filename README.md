@@ -12,14 +12,14 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 
 ## Key Features
 
-### 🎧 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
+### 3D Spatial Audio, EFX Dungeon Reverb & Binaural HRTF
 * **OpenAL Soft + EFX Environmental Reverb:** Every dungeon features custom acoustic reverberation profiles.
 * **Dynamic Wall Occlusion:** Sound sources originating behind solid dungeon geometry are dynamically muffled using EFX low-pass filtering while preserving open-air corridor travel.
 * **Surround Sound & Headphone HRTF:** Native 3D positional audio with full support for multichannel speaker layouts and binaural HRTF.
 
 ---
 
-### 🗺️ Seamless Dungeon Branches: Hive & Crypt
+### Seamless Dungeon Branches: Hive & Crypt
 *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
 * **The Hive (Levels 17–20):** Accessible via a downward stairway on **Caves Level 12**.
 * **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
@@ -28,20 +28,20 @@ The primary goal of this project is to expand vanilla Diablo with fresh depth, v
 
 ---
 
-### 🌧️ Dynamic Weather & Environmental Atmosphere (WIP)
+### Dynamic Weather & Environmental Atmosphere (WIP)
 * **Tristram Rainfall:** Real-time ambient rainfall layer across town.
 * **Biome Atmospheric Layers:** Foundation laid for area-specific environmental particle layers (ash, embers, and underground mist).
 
 ---
 
-### ⚔️ New Class Archetype: The Female Barbarian
+### New Class Archetype: The Female Barbarian
 Pairs the Rogue’s visuals, portraits, and voice lines with brutal frontline melee mechanics:
 * **Attributes:** High Strength and Vitality caps with zero Magic affinity.
 * **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages, and the active **Rage** skill.
 
 ---
 
-### 🏆 Hell Difficulty Endgame Drops
+### Hell Difficulty Endgame Drops
 Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three new unique artifacts:
 
 | Item | Base | Stats & Mechanics |
@@ -52,7 +52,7 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 ---
 
-## 🛠️ Other Gameplay & Polish Changes
+## Other Gameplay & Polish Changes
 
 * Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
 * Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
@@ -61,7 +61,7 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 ---
 
-## 📋 Roadmap / To-Do
+## Roadmap / To-Do
 
 * [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as rain, ambient fog, drifting ash, and cavern embers).
 * [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
