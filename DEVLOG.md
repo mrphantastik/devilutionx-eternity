@@ -381,4 +381,10 @@
 - **Live In-Game `ESC -> Options` Toggle (`Dynamic Lighting: ON / OFF`):**
   - Added `Dynamic Lighting: ON` / `Dynamic Lighting: OFF` (`GamemenuDynamicLighting`) to `sgOptionsMenu[]` in `Source/gamemenu.cpp` right below `Headphone Mode (HRTF)` (alongside `Settings -> Graphics -> Dynamic Lighting`), and added 8-item dense vertical spacing (`GMenuDenseTop = 78`, `GMenuDenseItemHeight = 32`, `logoY = 64`) in `Source/gmenu.cpp` so all 8 options fit cleanly above the HUD panel at 640x480.
 
-
+### 9.4 Highest-Priority Custom `dx-eternity.mpq` Archive & Full MP3 Support for Music and SFX (`Source/init.h`, `Source/init.cpp`, `Source/engine/assets.cpp`, `Source/engine/sound.cpp`, `Source/utils/soundsample.cpp`)
+- **Highest-Priority `dx-eternity.mpq` Loading & Asset Lookup (`dx_eternity_mpq`):**
+  - `LoadCoreArchives()` in `Source/init.cpp` loads `dx-eternity.mpq` (with case-insensitive fallbacks `DX-Eternity.mpq` / `DX-ETERNITY.MPQ`) at startup before UI art, fonts, or game archives are initialized.
+  - `FindMpqFile()` in `Source/engine/assets.cpp` checks `at(dx_eternity_mpq)` **first**—ahead of `font_mpq`, `lang_mpq`, `devilutionx_mpq`, `diabdat_mpq`, `hellfire_mpq`, and `hf*.mpq`—so any duplicate file inside `dx-eternity.mpq` overrides all other MPQ archives.
+- **Full MP3 Support for Music & Sound Effects (`LoadAudioFile`, `DecodeMemoryToOpenAlBuffer`, `SetChunkStream`):**
+  - `LoadAudioFile()` in `Source/engine/sound.cpp` checks `dx_eternity_mpq` for both `.mp3` and `.wav` versions of any requested audio path first (preventing `.mp3` files in lower-priority `hfmusic.mpq`/`hfvoice.mpq` from shadowing `.wav` or `.mp3` overrides in `dx-eternity.mpq`), then resolves `.mp3` followed by `.wav` across all remaining archives.
+  - `DecodeMemoryToOpenAlBuffer()` in `Source/utils/soundsample.cpp` supports both `dr_mp3` (`TryDecodeMp3Memory`) and `dr_wav` (`TryDecodeWavMemory`) with automatic cross-format header fallback (in case an MP3 stream is packed under a `.wav` entry or vice-versa) and decodes music tracks and speech/SFX streams up to `64 MB` directly into OpenAL Soft with `BSinc24` resampling and uncolored stereo playback (`AL_DIRECT_CHANNELS_SOFT = AL_REMIX_UNMATCHED_SOFT`).
