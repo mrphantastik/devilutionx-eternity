@@ -2,11 +2,11 @@
   <img src="assets/new-splash.png" alt="Alt Text" width="70%">
 </p>
 
-# DX:Eternity.
+# DX:Eternity
 
 **DX:Eternity** is a curated gameplay, atmospheric, and audiovisual overhaul built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine. 
 
-The primary goal of this project is to expand vanilla Diablo with fresh depth, variety, upgraded visuals and modern acoustic fidelity while protecting the classic Diablo I pace, dark-gothic tone, and itemization curve. Rather than bolting on disjointed mechanics, DX:Eternity integrates cut and expansion content seamlessly into the core Tristram descent.
+The primary goal of this project is to expand vanilla Diablo with variety, upgraded visuals and modern acoustic fidelity while protecting the classic Diablo I pace, dark-gothic tone and itemization curve. Rather than bolting on disjointed mechanics, DX:Eternity integrates cut and expansion content seamlessly into the core Tristram descent.
 
 ---
 
