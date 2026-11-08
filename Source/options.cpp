@@ -1015,6 +1015,7 @@ GraphicsOptions::GraphicsOptions()
     , hardwareCursorForItems("Hardware Cursor For Items", OptionEntryFlags::CantChangeInGame | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor For Items"), N_("Use a hardware cursor for items."), false)
     , hardwareCursorMaxSize("Hardware Cursor Maximum Size", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor Maximum Size"), N_("Maximum width / height for the hardware cursor. Larger cursors fall back to software."), 128, { 0, 64, 128, 256, 512 })
 #endif
+    , dynamicLighting("Dynamic Lighting", OptionEntryFlags::None, N_("Dynamic Lighting"), N_("Enable GPU 2D normal/occlusion lighting, ambient occlusion, and colored spell/projectile glow."), true)
     , showFPS("Show FPS", OptionEntryFlags::None, N_("Show FPS"), N_("Displays the FPS in the upper left corner of the screen."), false)
 {
 	resolution.SetValueChangedCallback(ResizeWindow);
@@ -1048,6 +1049,7 @@ std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 		&frameRateControl,
 		&gammaCorrection,
 		&zoom,
+		&dynamicLighting,
 		&showFPS,
 		&colorCycling,
 		&alternateNestArt,

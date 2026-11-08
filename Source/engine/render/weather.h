@@ -61,4 +61,10 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
  */
 void ResetWeatherState();
 
+/**
+ * @brief Returns the normalized (0.0 .. 1.0) intensity of any active Tristram lightning flash
+ * for directional normal-mapped sky illumination in the GPU lighting pipeline.
+ */
+float GetWeatherLightningFlashFactor();
+
 } // namespace devilution
