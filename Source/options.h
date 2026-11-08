@@ -536,8 +536,6 @@ struct GraphicsOptions : OptionCategoryBase {
 	/** @brief Maximum width / height for the hardware cursor. Larger cursors fall back to software. */
 	OptionEntryInt<int> hardwareCursorMaxSize;
 #endif
-	/** @brief Enable GPU 2D normal/occlusion lighting and colored projectile glow. */
-	OptionEntryBoolean dynamicLighting;
 	/** @brief Show FPS, even without the -f command line flag. */
 	OptionEntryBoolean showFPS;
 };

@@ -114,7 +114,6 @@ set(libdevilutionx_SRCS
   engine/render/automap_render.cpp
   engine/render/clx_render.cpp
   engine/render/dun_render.cpp
-  engine/render/gbuffer.cpp
   engine/render/scrollrt.cpp
   engine/render/text_render.cpp
   engine/render/weather.cpp
@@ -290,7 +289,7 @@ endif()
 
 if(NOT NOSOUND)
   find_package(OpenAL REQUIRED)
-  target_link_libraries(libdevilutionx PUBLIC SDL_audiolib::SDL_audiolib OpenAL::OpenAL winmm ole32 uuid opengl32)
+  target_link_libraries(libdevilutionx PUBLIC SDL_audiolib::SDL_audiolib OpenAL::OpenAL winmm ole32 uuid)
 endif()
 
 if(NOT NONET AND NOT DISABLE_ZERO_TIER)

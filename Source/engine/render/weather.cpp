@@ -992,11 +992,4 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 	}
 }
 
-float GetWeatherLightningFlashFactor()
-{
-	if (!gLightningFlashActiveOnPalette || gActiveAppliedStrength == 0)
-		return 0.0F;
-	return std::min(1.0F, static_cast<float>(gActiveAppliedStrength) / 170.0F);
-}
-
 } // namespace devilution

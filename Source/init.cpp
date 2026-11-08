@@ -60,7 +60,6 @@ std::optional<std::string> diabdat_data_path;
 std::optional<std::string> hellfire_data_path;
 std::optional<std::string> font_data_path;
 std::optional<std::string> lang_data_path;
-std::optional<std::string> dx_eternity_data_path;
 #else
 std::optional<MpqArchive> spawn_mpq;
 std::optional<MpqArchive> diabdat_mpq;
@@ -71,7 +70,6 @@ std::optional<MpqArchive> hfbarb_mpq;
 std::optional<MpqArchive> hfmusic_mpq;
 std::optional<MpqArchive> hfvoice_mpq;
 std::optional<MpqArchive> devilutionx_mpq;
-std::optional<MpqArchive> dx_eternity_mpq;
 std::optional<MpqArchive> lang_mpq;
 std::optional<MpqArchive> font_mpq;
 #endif
@@ -225,7 +223,6 @@ void init_cleanup()
 	}
 
 #ifdef UNPACKED_MPQS
-	dx_eternity_data_path = std::nullopt;
 	lang_data_path = std::nullopt;
 	font_data_path = std::nullopt;
 	hellfire_data_path = std::nullopt;
@@ -243,7 +240,6 @@ void init_cleanup()
 	lang_mpq = std::nullopt;
 	font_mpq = std::nullopt;
 	devilutionx_mpq = std::nullopt;
-	dx_eternity_mpq = std::nullopt;
 #endif
 
 	NetClose();
@@ -254,17 +250,8 @@ void LoadCoreArchives()
 	auto paths = GetMPQSearchPaths();
 
 #ifdef UNPACKED_MPQS
-	dx_eternity_data_path = FindUnpackedMpqData(paths, "dx-eternity");
 	font_data_path = FindUnpackedMpqData(paths, "fonts");
 #else // !UNPACKED_MPQS
-	// Load dx-eternity.mpq with highest priority so custom assets override all other MPQs
-	dx_eternity_mpq = LoadMPQ(paths, "dx-eternity.mpq");
-	if (!dx_eternity_mpq) {
-		dx_eternity_mpq = LoadMPQ(paths, "DX-Eternity.mpq");
-	}
-	if (!dx_eternity_mpq) {
-		dx_eternity_mpq = LoadMPQ(paths, "DX-ETERNITY.MPQ");
-	}
 #if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__3DS__) && !defined(__SWITCH__)
 	// Load devilutionx.mpq first to get the font file for error messages
 	devilutionx_mpq = LoadMPQ(paths, "devilutionx.mpq");

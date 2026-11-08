@@ -47,8 +47,6 @@ constexpr int GMenuTop = 117;
 constexpr int GMenuItemHeight = 45;
 constexpr int GMenuCompactTop = 93;
 constexpr int GMenuCompactItemHeight = 37;
-constexpr int GMenuDenseTop = 78;
-constexpr int GMenuDenseItemHeight = 32;
 
 OptionalOwnedClxSpriteList optbar_cel;
 OptionalOwnedClxSpriteList PentSpin_cel;
@@ -64,15 +62,11 @@ int sgCurrentMenuIdx;
 
 int GetActiveMenuTop()
 {
-	if (sgCurrentMenuIdx >= 8)
-		return GMenuDenseTop;
 	return sgCurrentMenuIdx > 5 ? GMenuCompactTop : GMenuTop;
 }
 
 int GetActiveMenuItemHeight()
 {
-	if (sgCurrentMenuIdx >= 8)
-		return GMenuDenseItemHeight;
 	return sgCurrentMenuIdx > 5 ? GMenuCompactItemHeight : GMenuItemHeight;
 }
 
@@ -273,7 +267,7 @@ void gmenu_draw(const Surface &out)
 		}
 		int uiPositionY = GetUIRectangle().position.y;
 		const ClxSprite sprite = (*sgpLogo)[LogoAnim_frame];
-		const int logoY = (sgCurrentMenuIdx >= 8 ? 64 : (sgCurrentMenuIdx > 5 ? 78 : 102)) + uiPositionY;
+		const int logoY = (sgCurrentMenuIdx > 5 ? 78 : 102) + uiPositionY;
 		ClxDraw(out, { (gnScreenWidth - sprite.width()) / 2, logoY }, sprite);
 		int y = (GetActiveMenuTop() - 7) + uiPositionY;
 		const int itemHeight = GetActiveMenuItemHeight();

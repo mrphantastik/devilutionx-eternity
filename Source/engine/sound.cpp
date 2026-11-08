@@ -252,42 +252,15 @@ std::string GetMp3Path(const char *path)
 {
 	std::string mp3Path = path;
 	const std::string::size_type dot = mp3Path.find_last_of('.');
-	if (dot != std::string::npos) {
-		mp3Path.replace(dot + 1, mp3Path.size() - (dot + 1), "mp3");
-	} else {
-		mp3Path.append(".mp3");
-	}
+	mp3Path.replace(dot + 1, mp3Path.size() - (dot + 1), "mp3");
 	return mp3Path;
 }
 
 bool LoadAudioFile(const char *path, bool stream, bool errorDialog, SoundSample &result)
 {
-	const std::string mp3Path = GetMp3Path(path);
 	bool isMp3 = true;
-	std::string foundPath = mp3Path;
-	AssetRef ref;
-
-#ifndef UNPACKED_MPQS
-	// Ensure any custom audio file (.mp3 or .wav) in dx-eternity.mpq takes highest priority
-	// over both .mp3 and .wav files in lower-priority archives (such as hfmusic.mpq / diabdat.mpq).
-	if (dx_eternity_mpq) {
-		if (dx_eternity_mpq->HasFile(mp3Path.c_str())) {
-			foundPath = mp3Path;
-			isMp3 = true;
-			ref = FindAsset(foundPath.c_str());
-		} else if (dx_eternity_mpq->HasFile(path)) {
-			foundPath = path;
-			isMp3 = false;
-			ref = FindAsset(foundPath.c_str());
-		}
-	}
-#endif
-
-	if (!ref.ok()) {
-		foundPath = mp3Path;
-		isMp3 = true;
-		ref = FindAsset(foundPath.c_str());
-	}
+	std::string foundPath = GetMp3Path(path);
+	AssetRef ref = FindAsset(foundPath.c_str());
 	if (!ref.ok()) {
 		ref = FindAsset(path);
 		foundPath = path;

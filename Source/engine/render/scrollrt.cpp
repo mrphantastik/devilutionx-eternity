@@ -17,7 +17,6 @@
 #include "engine/dx.h"
 #include "engine/render/clx_render.hpp"
 #include "engine/render/dun_render.hpp"
-#include "engine/render/gbuffer.h"
 #include "engine/render/text_render.hpp"
 #include "engine/render/weather.h"
 #include "engine/trn.hpp"
@@ -304,7 +303,6 @@ void DrawMissilePrivate(const Surface &out, const Missile &missile, Point target
 		ClxDrawLight(out, missileRenderPosition, sprite);
 	else
 		ClxDraw(out, missileRenderPosition, sprite);
-	GBufferAddMissileLight(missile, missileRenderPosition, sprite.width(), sprite.height());
 }
 
 /**
@@ -353,7 +351,6 @@ void DrawMonster(const Surface &out, Point tilePosition, Point targetBufferPosit
 		ClxDrawTRN(out, targetBufferPosition, sprite, trn);
 	else
 		ClxDrawLight(out, targetBufferPosition, sprite);
-	GBufferAddMonsterLight(monster, targetBufferPosition, sprite.width(), sprite.height());
 }
 
 /**
@@ -416,14 +413,12 @@ void DrawPlayer(const Surface &out, const Player &player, Point tilePosition, Po
 	if (&player == MyPlayer && IsNoneOf(leveltype, DTYPE_NEST, DTYPE_CRYPT)) {
 		ClxDraw(out, spriteBufferPosition, sprite);
 		DrawPlayerIcons(out, player, targetBufferPosition, false);
-		GBufferAddPlayerLight(player, targetBufferPosition);
 		return;
 	}
 
 	if (!IsTileLit(tilePosition) || ((MyPlayer->_pInfraFlag || MyPlayer->isOnArenaLevel()) && LightTableIndex > 8)) {
 		ClxDrawTRN(out, spriteBufferPosition, sprite, GetInfravisionTRN());
 		DrawPlayerIcons(out, player, targetBufferPosition, true);
-		GBufferAddPlayerLight(player, targetBufferPosition);
 		return;
 	}
 
@@ -435,7 +430,6 @@ void DrawPlayer(const Surface &out, const Player &player, Point tilePosition, Po
 
 	ClxDrawLight(out, spriteBufferPosition, sprite);
 	DrawPlayerIcons(out, player, targetBufferPosition, false);
-	GBufferAddPlayerLight(player, targetBufferPosition);
 
 	LightTableIndex = l;
 }
@@ -615,7 +609,6 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 		}
 		targetBufferPosition.y -= TILE_HEIGHT;
 	}
-	GBufferTagDungeonCell(out, tilePosition, targetBufferPosition + Displacement { 0, TILE_HEIGHT * (MicroTileLen / 2) }, LightTableIndex, transparency);
 }
 
 /**
@@ -649,7 +642,6 @@ void DrawFloor(const Surface &out, Point tilePosition, Point targetBufferPositio
 			    levelCelBlock, MaskType::Solid, tbl);
 		}
 	}
-	GBufferTagFloorTile(out, tilePosition, targetBufferPosition, LightTableIndex);
 }
 
 /**
@@ -1104,7 +1096,6 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 	DunRenderStats.clear();
 #endif
 
-	GBufferBeginFrame(fullOut);
 	DrawFloor(out, position, Point {} + offset, rows, columns);
 	UpdateWeatherState(out, position, offset);
 	DrawTileContent(out, position, Point {} + offset, rows, columns);
@@ -1113,7 +1104,6 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 	if (*sgOptions.Graphics.zoom) {
 		Zoom(fullOut.subregionY(0, gnViewportHeight));
 	}
-	GBufferEndWorldPass(fullOut, position, offset);
 
 #ifdef DUN_RENDER_STATS
 	std::vector<std::pair<DunRenderType, size_t>> sortedStats(DunRenderStats.begin(), DunRenderStats.end());

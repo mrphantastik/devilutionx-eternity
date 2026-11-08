@@ -37,10 +37,4 @@
   - Localized compact, semi-transparent 5-stage isometric puddle splash animations (-35% count, -50% size, +50% transparency) on walkable outdoor ground tiles rendered in `DrawCell` after `mt[0..1]`
   - Full-screen distant lightning palette flashes (`system_palette`, every 30–60s) with multi-strike flicker and speed-of-sound delayed thunder claps (+35% delay: `sfx\misc\thundera.wav` in Light Rain, `sfx\misc\thunderb.wav` in Heavy Rain)
   - Seamless ambient looping playback of `sfx\misc\RainLightLoop.wav` and `sfx\misc\RainHeavyLoop.wav` (cleanly stopped on dungeon entry or quitting to the main menu)
-- [x] **Phase 9: Hybrid CPU G-Buffer + 2D Occlusion Dynamic Lighting Pipeline**
-  - **Phase 9A (Hybrid CPU G-Buffer & World/UI Layer Separation):** Per-pixel 32-bit `GBufferPixel` tagging world surfaces and solid indoor dungeon wall diamond occlusion footprints, with `gWorldPalSnapshot` world-pass snapshotting so 2D UI, HUD, Automap, Panels, Labels, and Cursor remain 100% untouched
-  - **Phase 9B (Sprite-Anchored Dynamic Colored Point-Light Collector):** Up to 48 real-time point lights anchored directly to rendered screen coordinates (`DrawPlayer`, `DrawMissilePrivate`, `DrawMonster`, and rendered dungeon tiles) across players (with elemental weapon swing glow), Fire/Lightning/Holy/Arcane/Blood/Acid projectiles, unique monsters/bosses, and biome-tinted dungeon lights with zero walking blink
-  - **Phase 9C & 9D (1:1 Native-Resolution Tone-Mapped Lighting Pass & Live Menu Toggles):** Smooth C2 quartic radial attenuation with soft asymptotic multi-light tone mapping (`dyn / (1 + dyn * 1.35)`), screen-space wall shadow raymarching, contrast-preserving multiplicative color modulation (zero Sobel edge noise, zero bounding-box rectangles, zero additive blur wash), and live toggles in both `ESC -> Options -> Dynamic Lighting: ON/OFF` and `Settings -> Graphics -> Dynamic Lighting`
-  - **Custom `dx-eternity.mpq` Archive & Full MP3 Audio Support:** Highest-priority `dx-eternity.mpq` archive loading (overriding `devilutionx.mpq`, `diabdat.mpq`, and `hellfire.mpq`) + native `.mp3` and `.wav` decoding via `dr_mp3` / `dr_wav` for all Music tracks and Sound Effects
-- [ ] **Phase 10 (Upcoming): Additional Dungeon Particle & Atmospheric Polish**
-
+- [ ] **Phase 9 (Upcoming): Dungeon Particle & Atmospheric Effects**

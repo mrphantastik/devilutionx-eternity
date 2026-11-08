@@ -112,65 +112,12 @@ float VolumeLogToLinear(int logVolume, int logMin, int logMax)
 	return std::pow(LogBase, logScaled / VolumeScale);
 }
 
-bool TryDecodeWavMemory(const std::uint8_t *data, std::size_t dwBytes, int &channels, int &sampleRate, std::vector<std::int16_t> &pcm)
-{
-	drwav wav;
-	if (!drwav_init_memory(&wav, data, dwBytes, nullptr))
-		return false;
-
-	channels = static_cast<int>(wav.channels);
-	sampleRate = static_cast<int>(wav.sampleRate);
-	if ((channels != 1 && channels != 2) || sampleRate <= 0 || wav.totalPCMFrameCount == 0) {
-		drwav_uninit(&wav);
-		return false;
-	}
-
-	const drwav_uint64 totalFrames = wav.totalPCMFrameCount;
-	pcm.resize(static_cast<std::size_t>(totalFrames * static_cast<drwav_uint64>(channels)));
-	const drwav_uint64 framesRead = drwav_read_pcm_frames_s16(&wav, totalFrames, pcm.data());
-	drwav_uninit(&wav);
-
-	if (framesRead == 0)
-		return false;
-	pcm.resize(static_cast<std::size_t>(framesRead * static_cast<drwav_uint64>(channels)));
-	return true;
-}
-
-bool TryDecodeMp3Memory(const std::uint8_t *data, std::size_t dwBytes, int &channels, int &sampleRate, std::vector<std::int16_t> &pcm)
-{
-	drmp3 mp3;
-	if (!drmp3_init_memory(&mp3, data, dwBytes, nullptr))
-		return false;
-
-	channels = static_cast<int>(mp3.channels);
-	sampleRate = static_cast<int>(mp3.sampleRate);
-	if ((channels != 1 && channels != 2) || sampleRate <= 0) {
-		drmp3_uninit(&mp3);
-		return false;
-	}
-
-	pcm.clear();
-	pcm.reserve(65536);
-	std::array<std::int16_t, 8192> chunk {};
-	const drmp3_uint64 chunkFrames = chunk.size() / static_cast<std::size_t>(channels);
-	while (true) {
-		const drmp3_uint64 framesRead = drmp3_read_pcm_frames_s16(&mp3, chunkFrames, chunk.data());
-		if (framesRead == 0)
-			break;
-		const std::size_t samplesRead = static_cast<std::size_t>(framesRead) * static_cast<std::size_t>(channels);
-		pcm.insert(pcm.end(), chunk.begin(), chunk.begin() + samplesRead);
-	}
-	drmp3_uninit(&mp3);
-
-	return !pcm.empty();
-}
-
 /**
  * @brief Decodes raw WAV or MP3 memory directly via dr_wav / dr_mp3 into native 16-bit PCM frames
  * and creates both a mono buffer (for 3D positional HRTF/surround spatialization) and a stereo
- * buffer (for direct uncolored 2D UI/inventory/player-centered/music playback that bypasses HRTF).
+ * buffer (for direct uncolored 2D UI/inventory/player-centered playback that bypasses HRTF).
  */
-std::shared_ptr<OpenAlBuffer> DecodeMemoryToOpenAlBuffer(const std::uint8_t *data, std::size_t dwBytes, bool isMp3, bool needMono3D = true)
+std::shared_ptr<OpenAlBuffer> DecodeMemoryToOpenAlBuffer(const std::uint8_t *data, std::size_t dwBytes, bool isMp3)
 {
 	if (data == nullptr || dwBytes == 0)
 		return nullptr;
@@ -179,35 +126,55 @@ std::shared_ptr<OpenAlBuffer> DecodeMemoryToOpenAlBuffer(const std::uint8_t *dat
 	int sampleRate = 0;
 	std::vector<std::int16_t> pcm;
 
-	// Decode with preferred format first, and automatically fall back if a modder packed
-	// an MP3 stream under a .wav filename or a WAV stream under an .mp3 filename.
-	bool decoded = isMp3
-	    ? (TryDecodeMp3Memory(data, dwBytes, channels, sampleRate, pcm) || TryDecodeWavMemory(data, dwBytes, channels, sampleRate, pcm))
-	    : (TryDecodeWavMemory(data, dwBytes, channels, sampleRate, pcm) || TryDecodeMp3Memory(data, dwBytes, channels, sampleRate, pcm));
-	if (!decoded)
-		return nullptr;
-
-	auto buffer = std::make_shared<OpenAlBuffer>();
-	if (!needMono3D && channels == 2) {
-		// Streaming stereo music / speech only needs a single stereo buffer
-		ALuint stereoBuf = 0;
-		alGetError();
-		alGenBuffers(1, &stereoBuf);
-		if (alGetError() != AL_NO_ERROR || stereoBuf == 0)
+	if (!isMp3) {
+		drwav wav;
+		if (!drwav_init_memory(&wav, data, dwBytes, nullptr))
 			return nullptr;
-		alBufferData(stereoBuf, AL_FORMAT_STEREO16, pcm.data(), static_cast<ALsizei>(pcm.size() * sizeof(std::int16_t)), static_cast<ALsizei>(sampleRate));
-		if (alGetError() != AL_NO_ERROR) {
-			alDeleteBuffers(1, &stereoBuf);
+
+		channels = static_cast<int>(wav.channels);
+		sampleRate = static_cast<int>(wav.sampleRate);
+		if ((channels != 1 && channels != 2) || sampleRate <= 0 || wav.totalPCMFrameCount == 0) {
+			drwav_uninit(&wav);
 			return nullptr;
 		}
-		buffer->monoId = stereoBuf;
-		buffer->stereoId = stereoBuf;
-		buffer->channels = channels;
-		buffer->sampleRate = sampleRate;
-		buffer->durationMs = static_cast<int>((pcm.size() / 2ULL * 1000ULL) / static_cast<std::size_t>(sampleRate));
-		return buffer;
+
+		const drwav_uint64 totalFrames = wav.totalPCMFrameCount;
+		pcm.resize(static_cast<std::size_t>(totalFrames * static_cast<drwav_uint64>(channels)));
+		const drwav_uint64 framesRead = drwav_read_pcm_frames_s16(&wav, totalFrames, pcm.data());
+		drwav_uninit(&wav);
+
+		if (framesRead == 0)
+			return nullptr;
+		pcm.resize(static_cast<std::size_t>(framesRead * static_cast<drwav_uint64>(channels)));
+	} else {
+		drmp3 mp3;
+		if (!drmp3_init_memory(&mp3, data, dwBytes, nullptr))
+			return nullptr;
+
+		channels = static_cast<int>(mp3.channels);
+		sampleRate = static_cast<int>(mp3.sampleRate);
+		if ((channels != 1 && channels != 2) || sampleRate <= 0) {
+			drmp3_uninit(&mp3);
+			return nullptr;
+		}
+
+		pcm.reserve(32768);
+		std::array<std::int16_t, 4096> chunk {};
+		const drmp3_uint64 chunkFrames = chunk.size() / static_cast<std::size_t>(channels);
+		while (true) {
+			const drmp3_uint64 framesRead = drmp3_read_pcm_frames_s16(&mp3, chunkFrames, chunk.data());
+			if (framesRead == 0)
+				break;
+			const std::size_t samplesRead = static_cast<std::size_t>(framesRead) * static_cast<std::size_t>(channels);
+			pcm.insert(pcm.end(), chunk.begin(), chunk.begin() + samplesRead);
+		}
+		drmp3_uninit(&mp3);
+
+		if (pcm.empty())
+			return nullptr;
 	}
 
+	auto buffer = std::make_shared<OpenAlBuffer>();
 	ALuint ids[2] = { 0, 0 };
 	alGetError();
 	alGenBuffers(2, ids);
@@ -261,8 +228,6 @@ ALuint CreateOpenAlSource(ALuint bufferId)
 	alSourcef(source, AL_ROLLOFF_FACTOR, 0.0F);
 	alSource3f(source, AL_POSITION, 0.0F, 0.0F, 0.0F);
 	alSource3f(source, AL_VELOCITY, 0.0F, 0.0F, 0.0F);
-	alSourcei(source, AL_DIRECT_CHANNELS_SOFT, AL_REMIX_UNMATCHED_SOFT);
-	alSourcei(source, AL_SOURCE_SPATIALIZE_SOFT, AL_FALSE);
 
 	// Use OpenAL Soft's highest-quality 24-point band-limited sinc resampler (BSinc24)
 	const ALint numResamplers = alGetInteger(AL_NUM_RESAMPLERS_SOFT);
@@ -438,16 +403,16 @@ int SoundSample::SetChunkStream(std::string filePath, bool isMp3, bool logErrors
 {
 	Release();
 
-	// Decode music tracks, speech/boss taunts, and ambient weather loops (<= 64 MB) directly into OpenAL Soft
+	// Decode speech/boss taunt and ambient weather loop streams (< 16 MB) directly into OpenAL Soft
 	if (IsOpenAlActive()) {
 		AssetRef ref = FindAsset(filePath.c_str());
-		if (ref.ok() && ref.size() > 0 && ref.size() <= 64 * 1024 * 1024) {
+		if (ref.ok() && ref.size() > 0 && ref.size() <= 16 * 1024 * 1024) {
 			const std::size_t size = ref.size();
 			AssetHandle assetHandle = OpenAsset(std::move(ref));
 			if (assetHandle.ok()) {
 				auto rawData = MakeArraySharedPtr<std::uint8_t>(size);
 				if (assetHandle.read(rawData.get(), size)) {
-					al_buffer_ = DecodeMemoryToOpenAlBuffer(rawData.get(), size, isMp3, /*needMono3D=*/false);
+					al_buffer_ = DecodeMemoryToOpenAlBuffer(rawData.get(), size, isMp3);
 					if (al_buffer_ != nullptr) {
 						al_source_ = CreateOpenAlSource(al_buffer_->stereoId);
 						if (al_source_ != 0) {

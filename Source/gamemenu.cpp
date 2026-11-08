@@ -31,7 +31,6 @@ void GamemenuMusicVolume(bool bActivate);
 void GamemenuSoundVolume(bool bActivate);
 void GamemenuReverb(bool bActivate);
 void GamemenuHrtf(bool bActivate);
-void GamemenuDynamicLighting(bool bActivate);
 void GamemenuGamma(bool bActivate);
 void GamemenuSpeed(bool bActivate);
 
@@ -61,15 +60,14 @@ TMenuItem sgMultiMenu[] = {
 TMenuItem sgOptionsMenu[] = {
 	// clang-format off
 	// dwFlags,                     pszStr,              fnMenu
-	{ GMENU_ENABLED | GMENU_SLIDER, nullptr,             &GamemenuMusicVolume     },
-	{ GMENU_ENABLED | GMENU_SLIDER, nullptr,             &GamemenuSoundVolume     },
-	{ GMENU_ENABLED               , nullptr,             &GamemenuReverb          },
-	{ GMENU_ENABLED               , nullptr,             &GamemenuHrtf            },
-	{ GMENU_ENABLED               , nullptr,             &GamemenuDynamicLighting },
-	{ GMENU_ENABLED | GMENU_SLIDER, N_("Gamma"),         &GamemenuGamma           },
-	{ GMENU_ENABLED | GMENU_SLIDER, N_("Speed"),         &GamemenuSpeed           },
-	{ GMENU_ENABLED               , N_("Previous Menu"), &GamemenuPrevious        },
-	{ GMENU_ENABLED               , nullptr,             nullptr                  },
+	{ GMENU_ENABLED | GMENU_SLIDER, nullptr,             &GamemenuMusicVolume  },
+	{ GMENU_ENABLED | GMENU_SLIDER, nullptr,             &GamemenuSoundVolume  },
+	{ GMENU_ENABLED               , nullptr,             &GamemenuReverb       },
+	{ GMENU_ENABLED               , nullptr,             &GamemenuHrtf         },
+	{ GMENU_ENABLED | GMENU_SLIDER, N_("Gamma"),         &GamemenuGamma        },
+	{ GMENU_ENABLED | GMENU_SLIDER, N_("Speed"),         &GamemenuSpeed        },
+	{ GMENU_ENABLED               , N_("Previous Menu"), &GamemenuPrevious     },
+	{ GMENU_ENABLED               , nullptr,             nullptr               },
 	// clang-format on
 };
 /** Specifies the menu names for music enabled and disabled. */
@@ -90,10 +88,6 @@ const char *const ReverbToggleNames[] = {
 const char *const HrtfToggleNames[] = {
 	N_("Headphone Mode (HRTF): ON"),
 	N_("Headphone Mode (HRTF): OFF"),
-};
-const char *const DynamicLightingToggleNames[] = {
-	N_("Dynamic Lighting: ON"),
-	N_("Dynamic Lighting: OFF"),
 };
 
 void GamemenuUpdateSingle()
@@ -179,43 +173,37 @@ void GamemenuGetHrtf()
 	sgOptionsMenu[3].pszStr = *sgOptions.Audio.hrtf ? HrtfToggleNames[0] : HrtfToggleNames[1];
 }
 
-void GamemenuGetDynamicLighting()
-{
-	sgOptionsMenu[4].setEnabled(true);
-	sgOptionsMenu[4].pszStr = *sgOptions.Graphics.dynamicLighting ? DynamicLightingToggleNames[0] : DynamicLightingToggleNames[1];
-}
-
 void GamemenuGetGamma()
 {
-	gmenu_slider_steps(&sgOptionsMenu[5], 15);
-	gmenu_slider_set(&sgOptionsMenu[5], 30, 100, UpdateGamma(0));
+	gmenu_slider_steps(&sgOptionsMenu[4], 15);
+	gmenu_slider_set(&sgOptionsMenu[4], 30, 100, UpdateGamma(0));
 }
 
 void GamemenuGetSpeed()
 {
 	if (gbIsMultiplayer) {
-		sgOptionsMenu[6].removeFlags(GMENU_ENABLED | GMENU_SLIDER);
+		sgOptionsMenu[5].removeFlags(GMENU_ENABLED | GMENU_SLIDER);
 		if (sgGameInitInfo.nTickRate >= 50)
-			sgOptionsMenu[6].pszStr = _("Speed: Fastest").data();
+			sgOptionsMenu[5].pszStr = _("Speed: Fastest").data();
 		else if (sgGameInitInfo.nTickRate >= 40)
-			sgOptionsMenu[6].pszStr = _("Speed: Faster").data();
+			sgOptionsMenu[5].pszStr = _("Speed: Faster").data();
 		else if (sgGameInitInfo.nTickRate >= 30)
-			sgOptionsMenu[6].pszStr = _("Speed: Fast").data();
+			sgOptionsMenu[5].pszStr = _("Speed: Fast").data();
 		else if (sgGameInitInfo.nTickRate == 20)
-			sgOptionsMenu[6].pszStr = _("Speed: Normal").data();
+			sgOptionsMenu[5].pszStr = _("Speed: Normal").data();
 		return;
 	}
 
-	sgOptionsMenu[6].addFlags(GMENU_ENABLED | GMENU_SLIDER);
+	sgOptionsMenu[5].addFlags(GMENU_ENABLED | GMENU_SLIDER);
 
-	sgOptionsMenu[6].pszStr = _("Speed").data();
-	gmenu_slider_steps(&sgOptionsMenu[6], 46);
-	gmenu_slider_set(&sgOptionsMenu[6], 20, 50, sgGameInitInfo.nTickRate);
+	sgOptionsMenu[5].pszStr = _("Speed").data();
+	gmenu_slider_steps(&sgOptionsMenu[5], 46);
+	gmenu_slider_set(&sgOptionsMenu[5], 20, 50, sgGameInitInfo.nTickRate);
 }
 
 int GamemenuSliderGamma()
 {
-	return gmenu_slider_get(&sgOptionsMenu[5], 30, 100);
+	return gmenu_slider_get(&sgOptionsMenu[4], 30, 100);
 }
 
 void GamemenuOptions(bool /*bActivate*/)
@@ -224,7 +212,6 @@ void GamemenuOptions(bool /*bActivate*/)
 	GamemenuGetSound();
 	GamemenuGetReverb();
 	GamemenuGetHrtf();
-	GamemenuGetDynamicLighting();
 	GamemenuGetGamma();
 	GamemenuGetSpeed();
 	gmenu_set_items(sgOptionsMenu, nullptr);
@@ -313,14 +300,6 @@ void GamemenuHrtf(bool /*bActivate*/)
 	PlaySFX(IS_TITLEMOV);
 }
 
-void GamemenuDynamicLighting(bool /*bActivate*/)
-{
-	sgOptions.Graphics.dynamicLighting.SetValue(!*sgOptions.Graphics.dynamicLighting);
-	GamemenuGetDynamicLighting();
-	RedrawEverything();
-	PlaySFX(IS_TITLEMOV);
-}
-
 void GamemenuGamma(bool bActivate)
 {
 	int gamma;
@@ -345,9 +324,9 @@ void GamemenuSpeed(bool bActivate)
 			sgGameInitInfo.nTickRate = 20;
 		else
 			sgGameInitInfo.nTickRate = 50;
-		gmenu_slider_set(&sgOptionsMenu[6], 20, 50, sgGameInitInfo.nTickRate);
+		gmenu_slider_set(&sgOptionsMenu[5], 20, 50, sgGameInitInfo.nTickRate);
 	} else {
-		sgGameInitInfo.nTickRate = gmenu_slider_get(&sgOptionsMenu[6], 20, 50);
+		sgGameInitInfo.nTickRate = gmenu_slider_get(&sgOptionsMenu[5], 20, 50);
 	}
 
 	sgOptions.Gameplay.tickRate.SetValue(sgGameInitInfo.nTickRate);
