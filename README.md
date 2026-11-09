@@ -20,13 +20,13 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 ### Dungeon Palette Randomization
 - Dynamically randomizes color palettes across dungeons, introducing distinct environmental variety.
 - Adapted and integrated from [DevilutionXRandomizer](https://github.com/stoffelkopf/DevilutionXRandomizer) by **stoffelkopf**.
--
-  <p align="center">
-  <img src="assets/ss-caves.png" width="24%" alt="Caves">
-  <img src="assets/ss-crypt.png" width="24%" alt="Crypt">
-  <img src="assets/ss-hell.png" width="24%" alt="Hell">
-  <img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain">
-  </p>
+
+<p align="center">
+<img src="assets/ss-caves.png" width="24%" alt="Caves">
+<img src="assets/ss-crypt.png" width="24%" alt="Crypt">
+<img src="assets/ss-hell.png" width="24%" alt="Hell">
+<img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain">
+</p>
 
 ---
 
