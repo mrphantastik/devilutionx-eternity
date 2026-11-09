@@ -35,6 +35,7 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 
 ### Dynamic Weather & Environmental Atmosphere (WIP)
 - **Tristram Rainfall:** Real-time ambient rainfall layer across town.
+- **Interactive Ground Fog**: Real-time 20 Hz volumetric mist simulation that reacts to entity movement and explosions
 
 ---
 
