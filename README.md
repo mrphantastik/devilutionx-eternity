@@ -48,7 +48,7 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 ### New Class Archetype: The Female Barbarian
 Pairs the Rogue’s visuals and voice lines with the cut *Hellfire* Barbarian class mechanics:
 - **Attributes:** High Strength and Vitality caps with zero Magic affinity.
-- **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages, and the active **Rage** skill.
+- **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages and the active **Rage** skill.
 
 ---
 
