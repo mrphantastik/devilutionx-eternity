@@ -70,4 +70,4 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 - [ ] **Dynamic Weather & Biome Visual FX:** Area-specific atmospheric effects (such as rain, ambient fog, drifting ash, and cavern embers).
 - [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
-- [ ] **Cut Content Restoration:** Restoring select unreleased quests
+- [ ] **Cut Content Restoration:** Restoring select unreleased quests.
