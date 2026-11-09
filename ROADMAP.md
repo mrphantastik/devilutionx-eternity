@@ -32,7 +32,7 @@
   - Restored 4-variation randomized player footstep sounds (`sfx\misc\walk1.wav` – `walk4.wav`) in dungeons and Town
 - [x] **Phase 8: Tristram Weather & Environmental Particle System (Rain, Puddle Splashes, Steam Fog & Thunder)**
   - Always-active Light Rain & Heavy Rain simulation in Tristram (+35% raindrop intensity, rolled on new game and persisted until the player spends >= 1 minute in a dungeon)
-  - Camera-compensated 3-layer falling raindrop streaks with 75%/50%/25% 8-bit palette transparency blending
+  - 3D multi-plane depth rain streaks with per-layer camera parallax (`0.72x` distant background rain occluded behind buildings/roofs/trees/rocks via `DrawWeatherBackground()`, `1.00x` crisp midground world-plane rain, and `1.38x` fast near-camera foreground rain with 2px Depth-of-Field blur) and sinusoidal wind gust sway
   - Precipitation / Steam Fog: non-overlapping world-space drifting 4-puff vapor ribbons (-30% count, +20% size, +35% transparency) and curling 5-puff rising ground-evaporation wisps (-40% count, -35% size, +50% transparency) with scanline-free 12.5%/6.25% palette transparency
   - Localized compact, semi-transparent 5-stage isometric puddle splash animations (-35% count, -50% size, +50% transparency) on walkable outdoor ground tiles rendered in `DrawCell` after `mt[0..1]`
   - Full-screen distant lightning palette flashes (`system_palette`, every 30–60s) with multi-strike flicker and speed-of-sound delayed thunder claps (+35% delay: `sfx\misc\thundera.wav` in Light Rain, `sfx\misc\thunderb.wav` in Heavy Rain)

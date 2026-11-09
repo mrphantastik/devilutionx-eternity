@@ -49,9 +49,16 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetBufferPosition);
 
 /**
- * @brief Renders non-overlapping drifting precipitation/steam fog banks and falling
- * raindrop streaks across the viewport. Called in DrawGame() after DrawTileContent()
- * and before Zoom().
+ * @brief Renders distant background rain (Layer 0) immediately after DrawFloor()
+ * and before DrawTileContent() so buildings, roofs, rocks, trees, and characters
+ * naturally occlude distant rain sheets.
+ */
+void DrawWeatherBackground(const Surface &out, Point startTilePosition, Displacement offset);
+
+/**
+ * @brief Renders non-overlapping drifting precipitation/steam fog banks, midground
+ * rain streaks (Layer 1), and near-camera out-of-focus foreground rain (Layer 2).
+ * Called in DrawGame() after DrawTileContent() and before Zoom().
  */
 void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement offset);
 

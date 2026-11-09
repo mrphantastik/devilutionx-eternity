@@ -1098,6 +1098,7 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 
 	DrawFloor(out, position, Point {} + offset, rows, columns);
 	UpdateWeatherState(out, position, offset);
+	DrawWeatherBackground(out, position, offset);
 	DrawTileContent(out, position, Point {} + offset, rows, columns);
 	DrawWeatherAir(out, position, offset);
 

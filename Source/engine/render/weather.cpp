@@ -31,6 +31,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include <SDL.h>
 
@@ -47,10 +48,10 @@ namespace devilution {
 
 namespace {
 
-// +35% increased raindrop counts for both Light Rain (96 -> 132) and Heavy Rain (264 -> 360)
-constexpr size_t MaxRainDrops = 384;
-constexpr size_t LightRainDropCount = 132;
-constexpr size_t HeavyRainDropCount = 360;
+// Multi-plane 3D raindrop counts for Light Rain and Heavy Rain
+constexpr size_t MaxRainDrops = 448;
+constexpr size_t LightRainDropCount = 160;
+constexpr size_t HeavyRainDropCount = 420;
 
 // Steam Fog Banks: amount reduced by 30% (13 -> 9 in Light Rain, 20 -> 14 in Heavy Rain),
 // arranged on a non-overlapping 5x3 world-space lattice (1500 x 900 px, 300 x 300 px per cell)
@@ -67,8 +68,9 @@ struct RainDrop {
 	float x = 0.0F;
 	float y = 0.0F;
 	float speedScale = 1.0F;
+	float parallaxScale = 1.0F; // 0.72 (Layer 0 far), 1.00 (Layer 1 mid), 1.38 (Layer 2 near camera)
 	uint8_t length = 12;
-	uint8_t layer = 0; // 0 = far/fine, 1 = mid, 2 = near/bright
+	uint8_t layer = 0;          // 0 = far/occluded, 1 = mid, 2 = near/DoF blurred
 	uint8_t colorIndex = PAL16_BLUE + 4;
 };
 
@@ -127,6 +129,27 @@ int gLastViewportH = 0;
 
 std::array<RainDrop, MaxRainDrops> gRainDrops;
 std::array<SteamFogBank, MaxSteamFogBanks> gSteamFogBanks;
+
+// Screen-space mask for Layer 0 (Distant Background Rain):
+// Populated in DrawWeatherBackground() and composited onto walkable ground tiles
+// inside DrawWeatherGroundTile() (after floor microtiles mt[0..1] and before roofs/walls
+// mt[2..15], solid tiles, trees, NPCs, and players) so DrawCell() never overwrites Layer 0
+// while roofs, walls, trees, rocks, and characters naturally paint over and occlude it.
+std::vector<uint16_t> gBgRainMask;
+std::vector<uint8_t> gBgRainBlockGrid;
+int gBgRainMaskW = 0;
+int gBgRainMaskH = 0;
+int gBgRainBlockCols = 0;
+int gBgRainBlockRows = 0;
+
+inline float GetLayerBaseSlant(uint8_t layer, float heavyBlend)
+{
+	if (layer == 0)
+		return -(0.12F + 0.05F * heavyBlend); // Distant background: more vertical
+	if (layer == 1)
+		return -(0.21F + 0.08F * heavyBlend); // Midground: standard wind angle
+	return -(0.31F + 0.10F * heavyBlend);     // Near-camera lens: steeper perspective slant
+}
 
 inline uint32_t FastHash(uint32_t x)
 {
@@ -294,28 +317,34 @@ void RollRainIntensity()
 
 void InitRainDrop(RainDrop &drop, int viewW, int viewH, bool randomY)
 {
-	const int marginX = 112;
+	const int marginX = 144;
 	drop.x = static_cast<float>(GenerateRnd(std::max(1, viewW + marginX * 2)) - marginX);
 	drop.y = randomY
 	    ? static_cast<float>(GenerateRnd(std::max(1, viewH)))
-	    : -static_cast<float>(GenerateRnd(48));
+	    : -static_cast<float>(GenerateRnd(64));
 
 	const int roll = GenerateRnd(100);
-	if (roll < 30) {
-		drop.layer = 0; // Fine distant drop
-		drop.speedScale = 0.80F + static_cast<float>(GenerateRnd(16)) * 0.01F;
-		drop.length = static_cast<uint8_t>(9 + GenerateRnd(5));
-		drop.colorIndex = static_cast<uint8_t>(PAL16_BLUE + 5 + GenerateRnd(3));
-	} else if (roll < 75) {
-		drop.layer = 1; // Midground drop
-		drop.speedScale = 0.96F + static_cast<float>(GenerateRnd(18)) * 0.01F;
-		drop.length = static_cast<uint8_t>(13 + GenerateRnd(5));
-		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 3 + GenerateRnd(3));
-	} else {
-		drop.layer = 2; // Foreground fast bright streak
-		drop.speedScale = 1.14F + static_cast<float>(GenerateRnd(22)) * 0.01F;
-		drop.length = static_cast<uint8_t>(17 + GenerateRnd(6));
+	if (roll < 40) {
+		// Layer 0: Distant background rain (composited on walkable ground behind roofs, rocks, trees, and walls)
+		drop.layer = 0;
+		drop.parallaxScale = 0.58F;
+		drop.speedScale = 0.55F + static_cast<float>(GenerateRnd(18)) * 0.01F;
+		drop.length = static_cast<uint8_t>(9 + GenerateRnd(5)); // 9..13 px
 		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 2 + GenerateRnd(2));
+	} else if (roll < 80) {
+		// Layer 1: Midground world-plane air rain
+		drop.layer = 1;
+		drop.parallaxScale = 1.00F;
+		drop.speedScale = 0.95F + static_cast<float>(GenerateRnd(24)) * 0.01F;
+		drop.length = static_cast<uint8_t>(17 + GenerateRnd(8)); // 17..24 px
+		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 1 + GenerateRnd(2));
+	} else {
+		// Layer 2: Near-camera foreground "lens" rain (whips past camera with 2px-3px DoF blur)
+		drop.layer = 2;
+		drop.parallaxScale = 1.65F;
+		drop.speedScale = 1.65F + static_cast<float>(GenerateRnd(50)) * 0.01F;
+		drop.length = static_cast<uint8_t>(34 + GenerateRnd(15)); // 34..48 px
+		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_GRAY : PAL16_BLUE) + GenerateRnd(2));
 	}
 }
 
@@ -826,10 +855,10 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		}
 	}
 
-	// Wind and fall velocity for Light Rain vs. Heavy Rain
-	const float windVelX = -(105.0F + 105.0F * gHeavyBlend);
+	// Per-layer fall velocity and slant-matched horizontal wind velocity so each depth
+	// plane moves strictly along its own perspective streak angle
 	const float fallVelY = 510.0F + 230.0F * gHeavyBlend;
-	const int marginX = 112;
+	const int marginX = 144;
 	const float minX = -static_cast<float>(marginX);
 	const float maxX = static_cast<float>(viewW + marginX);
 	const float spanX = maxX - minX;
@@ -840,13 +869,18 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		RainDrop &drop = gRainDrops[i];
-		drop.x += windVelX * drop.speedScale * dt - static_cast<float>(camDeltaX);
-		drop.y += fallVelY * drop.speedScale * dt - static_cast<float>(camDeltaY);
+		const float pScale = drop.parallaxScale;
+		const float layerSlant = GetLayerBaseSlant(drop.layer, gHeavyBlend);
+		const float dropFallVel = fallVelY * drop.speedScale;
+		const float dropWindVel = dropFallVel * layerSlant;
 
-		if (drop.y > static_cast<float>(viewH + 24)) {
+		drop.x += dropWindVel * dt - static_cast<float>(camDeltaX) * pScale;
+		drop.y += dropFallVel * dt - static_cast<float>(camDeltaY) * pScale;
+
+		if (drop.y > static_cast<float>(viewH + 48)) {
 			InitRainDrop(drop, viewW, viewH, /*randomY=*/false);
-		} else if (drop.y < -64.0F) {
-			drop.y += static_cast<float>(viewH + 64);
+		} else if (drop.y < -80.0F) {
+			drop.y += static_cast<float>(viewH + 80);
 		}
 
 		while (drop.x < minX) {
@@ -924,6 +958,119 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 			    static_cast<uint8_t>(steamHash >> 24));
 		}
 	}
+
+	// 3. Composite Layer 0 (Distant Background Rain) onto this walkable ground tile's 64x32
+	// isometric diamond right after floor microtiles mt[0..1] (and LeftFoliage/RightFoliage)
+	// have finished, and BEFORE upper microtiles mt[2..15] (roofs, walls, arches), solid tiles,
+	// trees (dSpecial), objects, NPCs, and players are drawn on top.
+	if (gBgRainMaskW == out.w() && gBgRainMaskH == out.h() && !gBgRainMask.empty()) {
+		const int boxLeft = std::max(0, targetBufferPosition.x);
+		const int boxRight = std::min(gBgRainMaskW - 1, targetBufferPosition.x + TILE_WIDTH - 1);
+		const int boxTop = std::max(0, targetBufferPosition.y - (TILE_HEIGHT - 1));
+		const int boxBottom = std::min(gBgRainMaskH - 1, targetBufferPosition.y);
+
+		if (boxLeft <= boxRight && boxTop <= boxBottom) {
+			const int bColStart = boxLeft >> 5;
+			const int bColEnd = boxRight >> 5;
+			const int bRowStart = boxTop >> 4;
+			const int bRowEnd = boxBottom >> 4;
+			bool hasBgRain = false;
+			for (int br = bRowStart; br <= bRowEnd && !hasBgRain; ++br) {
+				for (int bc = bColStart; bc <= bColEnd; ++bc) {
+					if (gBgRainBlockGrid[br * gBgRainBlockCols + bc] != 0) {
+						hasBgRain = true;
+						break;
+					}
+				}
+			}
+
+			if (hasBgRain) {
+				for (int localY = 0; localY < TILE_HEIGHT; ++localY) {
+					const int py = targetBufferPosition.y - localY;
+					if (py < 0 || py >= gBgRainMaskH)
+						continue;
+
+					const int distY = (localY < (TILE_HEIGHT / 2)) ? ((TILE_HEIGHT / 2 - 1) - localY) : (localY - (TILE_HEIGHT / 2));
+					const int xStart = std::max(0, targetBufferPosition.x + distY * 2 - 1);
+					const int xEnd = std::min(gBgRainMaskW - 1, targetBufferPosition.x + (TILE_WIDTH - distY * 2));
+
+					uint16_t *maskRow = &gBgRainMask[py * gBgRainMaskW];
+					for (int px = xStart; px <= xEnd; ++px) {
+						const uint16_t packed = maskRow[px];
+						if (packed == 0)
+							continue;
+						maskRow[px] = 0; // Consume so adjacent diamond overlap never double-blends
+						const uint8_t col = static_cast<uint8_t>(packed & 0xFFU);
+						const uint8_t blendMode = static_cast<uint8_t>(packed >> 8U);
+						uint8_t &dstPx = out[{ px, py }];
+						dstPx = (blendMode >= 2) ? Blend50(col, dstPx) : Blend25(col, dstPx);
+					}
+				}
+			}
+		}
+	}
+}
+
+void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Displacement /*offset*/)
+{
+	if (!gbRunGame || leveltype != DTYPE_TOWN || setlevel) {
+		return;
+	}
+
+	const int viewW = out.w();
+	const int viewH = out.h();
+	if (viewW <= 0 || viewH <= 0)
+		return;
+
+	if (gBgRainMaskW != viewW || gBgRainMaskH != viewH) {
+		gBgRainMaskW = viewW;
+		gBgRainMaskH = viewH;
+		gBgRainBlockCols = (viewW + 31) >> 5;
+		gBgRainBlockRows = (viewH + 15) >> 4;
+		gBgRainMask.resize(static_cast<size_t>(viewW) * static_cast<size_t>(viewH), 0);
+		gBgRainBlockGrid.resize(static_cast<size_t>(gBgRainBlockCols) * static_cast<size_t>(gBgRainBlockRows), 0);
+	} else {
+		std::fill(gBgRainMask.begin(), gBgRainMask.end(), 0);
+		std::fill(gBgRainBlockGrid.begin(), gBgRainBlockGrid.end(), 0);
+	}
+
+	const size_t activeDropCount = static_cast<size_t>(
+	    static_cast<float>(LightRainDropCount)
+	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
+
+	const uint32_t nowTick = gLastWeatherTick != 0 ? gLastWeatherTick : SDL_GetTicks();
+	const float gustPhase = static_cast<float>(nowTick) * 0.0025F;
+	const float baseSlant = GetLayerBaseSlant(0, gHeavyBlend);
+	const int extraLen = static_cast<int>(3.0F * gHeavyBlend);
+
+	// Rasterize Layer 0 (Distant Background Rain) into gBgRainMask so DrawWeatherGroundTile()
+	// composites it onto walkable ground after mt[0..1] and before roofs/walls/trees/NPCs.
+	for (size_t i = 0; i < activeDropCount; ++i) {
+		const RainDrop &drop = gRainDrops[i];
+		if (drop.layer != 0)
+			continue;
+
+		const int headX = static_cast<int>(drop.x);
+		const int headY = static_cast<int>(drop.y);
+		const int totalLen = static_cast<int>(drop.length) + extraLen;
+
+		if (headY < 0 || headY - totalLen >= viewH || headX < -24 || headX >= viewW + 24)
+			continue;
+
+		const float gust = std::sin(drop.x * 0.006F + gustPhase) * 0.025F;
+		const float slantXPerY = baseSlant + gust;
+
+		for (int step = 0; step < totalLen; ++step) {
+			const int py = headY - step;
+			const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
+			if (px < 0 || px >= viewW || py < 0 || py >= viewH)
+				continue;
+
+			const uint16_t blendMode = (step * 5 < totalLen * 2) ? 2U : 1U; // 2 = Blend50 head, 1 = Blend25 tail
+			gBgRainMask[py * viewW + px] = static_cast<uint16_t>((blendMode << 8U) | drop.colorIndex);
+			gBgRainBlockGrid[(py >> 4) * gBgRainBlockCols + (px >> 5)] = 1;
+		}
+	}
 }
 
 void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement offset)
@@ -955,38 +1102,72 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		}
 	}
 
-	// 2. Render falling raindrop streaks
+	// 2. Render Layer 1 (Midground Air Rain) and Layer 2 (Near-Camera DoF Foreground Rain)
+	// Note: Layer 0 was already composited onto walkable ground behind roofs/trees/walls
+	// in DrawWeatherGroundTile(), and all puddle splashes remain strictly on walkable ground.
 	const size_t activeDropCount = static_cast<size_t>(
 	    static_cast<float>(LightRainDropCount)
 	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
 
-	// Slant ratio dx/dy matching wind angle (-0.20 in Light Rain to -0.28 in Heavy Rain)
-	const float slantXPerY = -(0.20F + 0.08F * gHeavyBlend);
-	const int extraLen = static_cast<int>(6.0F * gHeavyBlend);
+	const uint32_t nowTick = gLastWeatherTick != 0 ? gLastWeatherTick : SDL_GetTicks();
+	const float gustPhase = static_cast<float>(nowTick) * 0.0032F;
+	const float slant1 = GetLayerBaseSlant(1, gHeavyBlend);
+	const float slant2 = GetLayerBaseSlant(2, gHeavyBlend);
+	const int extraLen1 = static_cast<int>(6.0F * gHeavyBlend);
+	const int extraLen2 = static_cast<int>(10.0F * gHeavyBlend);
 
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		const RainDrop &drop = gRainDrops[i];
+		if (drop.layer == 0)
+			continue; // Drawn on walkable ground behind roofs/rocks/trees in DrawWeatherGroundTile()
+
 		const int headX = static_cast<int>(drop.x);
 		const int headY = static_cast<int>(drop.y);
-		const int totalLen = static_cast<int>(drop.length) + extraLen;
+		const int totalLen = static_cast<int>(drop.length) + (drop.layer == 2 ? extraLen2 : extraLen1);
 
-		if (headY < 0 || headY - totalLen >= out.h() || headX < -24 || headX >= out.w() + 24)
+		if (headY < 0 || headY - totalLen >= out.h() || headX < -40 || headX >= out.w() + 40)
 			continue;
 
-		for (int step = 0; step < totalLen; ++step) {
-			const int py = headY - step;
-			const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
-			if (px < 0 || px >= out.w() || py < 0 || py >= out.h())
-				continue;
+		const float gust = std::sin(drop.x * 0.007F + gustPhase) * 0.035F;
+		const float slantXPerY = (drop.layer == 2 ? slant2 : slant1) + gust;
 
-			if (drop.layer == 2 && step * 4 < totalLen) {
-				PlotBlended75(out, px, py, drop.colorIndex);
-			} else if (drop.layer > 0 && step * 2 < totalLen) {
-				PlotBlended50(out, px, py, drop.colorIndex);
-			} else if (drop.layer == 0 && step * 3 < totalLen) {
-				PlotBlended50(out, px, py, drop.colorIndex);
-			} else {
-				PlotBlended25(out, px, py, drop.colorIndex);
+		if (drop.layer == 1) {
+			// Layer 1 (Midground world-plane air streak): crisp 1px streak (75% -> 50% -> 25%)
+			for (int step = 0; step < totalLen; ++step) {
+				const int py = headY - step;
+				const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
+				if (px < 0 || px >= out.w() || py < 0 || py >= out.h())
+					continue;
+
+				if (step * 4 < totalLen) {
+					PlotBlended75(out, px, py, drop.colorIndex);
+				} else if (step * 10 < totalLen * 7) {
+					PlotBlended50(out, px, py, drop.colorIndex);
+				} else {
+					PlotBlended25(out, px, py, drop.colorIndex);
+				}
+			}
+		} else {
+			// Layer 2 (Near-Camera Foreground "Lens" Rain): fast, long, steeper-angled streak
+			// with true 2px-3px Depth-of-Field blur (using 75%/50%/25% blends so 8-bit palette
+			// quantization preserves the full multi-pixel soft-focus width).
+			const uint8_t haloCol = static_cast<uint8_t>(drop.colorIndex + 1);
+			for (int step = 0; step < totalLen; ++step) {
+				const int py = headY - step;
+				const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
+				if (px < 1 || px >= out.w() - 1 || py < 0 || py >= out.h())
+					continue;
+
+				if (step * 3 < totalLen) {
+					PlotBlended75(out, px, py, drop.colorIndex);
+					PlotBlended50(out, px + 1, py, haloCol);
+					PlotBlended25(out, px - 1, py, haloCol);
+				} else if (step * 3 < totalLen * 2) {
+					PlotBlended50(out, px, py, drop.colorIndex);
+					PlotBlended25(out, px + 1, py, haloCol);
+				} else {
+					PlotBlended25(out, px, py, drop.colorIndex);
+				}
 			}
 		}
 	}
