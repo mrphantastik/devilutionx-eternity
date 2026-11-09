@@ -20,7 +20,7 @@ The primary goal of this project is to expand vanilla Diablo with variety, upgra
 ---
 
 ### Dungeon Palette Randomization
-- **Procedural Visual Variance:** Dynamically randomizes color palettes and lighting profiles across dungeon floors upon generation, introducing distinct environmental variety to the Cathedral, Catacombs, Caves, Hell, and side branches.
+- **Procedural Visual Variance:** Dynamically randomizes color palettes and lighting profiles across dungeon floors upon generation, introducing distinct environmental variety.
 - Adapted and integrated from [DevilutionXRandomizer](https://github.com/stoffelkopf/DevilutionXRandomizer) by **stoffelkopf**.
 
 ---
