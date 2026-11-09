@@ -54,12 +54,14 @@ constexpr size_t LightRainDropCount = 160;
 constexpr size_t HeavyRainDropCount = 420;
 
 // Steam Fog Banks: amount reduced by 30% (13 -> 9 in Light Rain, 20 -> 14 in Heavy Rain),
-// arranged on a non-overlapping 5x3 world-space lattice (1500 x 900 px, 300 x 300 px per cell)
+// distributed with golden-ratio vertical spread inside a 1560 x 1040 world-space domain
+// with per-bank speed variety, vertical meandering, rounder cloud morphologies, and
+// toroidal mutual repulsion so faster and slower wisps never collide or stack.
 constexpr size_t MaxSteamFogBanks = 14;
 constexpr size_t LightRainFogBankCount = 9;
 constexpr size_t HeavyRainFogBankCount = 14;
-constexpr int FogWorldWrapW = 1500;
-constexpr int FogWorldWrapH = 900;
+constexpr int FogWorldWrapW = 1560;
+constexpr int FogWorldWrapH = 1040;
 
 // Minimum time player must spend in a dungeon before Tristram rain intensity can change (1 minute)
 constexpr uint32_t MinDungeonTimeForWeatherChangeMs = 60000;
@@ -68,7 +70,7 @@ struct RainDrop {
 	float x = 0.0F;
 	float y = 0.0F;
 	float speedScale = 1.0F;
-	float parallaxScale = 1.0F; // 0.72 (Layer 0 far), 1.00 (Layer 1 mid), 1.38 (Layer 2 near camera)
+	float parallaxScale = 1.0F; // 0.58 (Layer 0 far), 1.00 (Layer 1 mid), 1.65 (Layer 2 near camera)
 	uint8_t length = 12;
 	uint8_t layer = 0;          // 0 = far/occluded, 1 = mid, 2 = near/DoF blurred
 	uint8_t colorIndex = PAL16_BLUE + 4;
@@ -79,19 +81,24 @@ struct SteamFogBank {
 	float worldY = 0.0F;
 	float phase = 0.0F;
 	float phaseSpeed = 0.50F;
-	int16_t rx = 68; // +20% size
-	int16_t ry = 25; // +20% size
-	int8_t puffOffX[4] = { -32, -10, 14, 34 };
-	int8_t puffOffY[4] = { 5, -5, 4, -4 };
-	uint8_t puffScalePct[4] = { 75, 100, 90, 70 };
+	float speedMultX = 1.0F;   // 0.65x .. 1.40x per-bank wind drift speed variety
+	float driftVelY = -4.0F;   // Individual diagonal vertical drift velocity
+	float swayAmpY = 14.0F;    // Vertical undulating wave amplitude (px/s)
+	float swayFreq = 0.35F;    // Vertical undulating frequency
+	int16_t boundRx = 88;      // Precomputed max horizontal collision radius
+	int16_t boundRy = 56;      // Precomputed max vertical collision radius
+	int16_t puffRx[4] = { 42, 54, 48, 40 };
+	int16_t puffRy[4] = { 30, 38, 34, 28 };
+	int8_t puffOffX[4] = { -22, -4, 14, 24 };
+	int8_t puffOffY[4] = { 8, -10, 10, -6 };
 	uint8_t colorIndex = PAL16_GRAY + 6;
 };
 
 struct DrawnFogRect {
-	int minX;
-	int maxX;
-	int minY;
-	int maxY;
+	int cx;
+	int cy;
+	int rx;
+	int ry;
 };
 
 bool gWeatherInitialized = false;
@@ -380,42 +387,71 @@ void InitRainDrop(RainDrop &drop, int viewW, int viewH, bool randomY)
 
 void InitSteamFogBank(SteamFogBank &bank, size_t index)
 {
-	// Arrange on a strict non-overlapping 5x3 staggered lattice inside 1500x900 world pixels:
-	// Each cell is 300x300 px, and each bank's max extent is ~200x76 px with bounded cell jitter,
-	// guaranteeing two banks never touch or overlap.
-	const int cols = 5;
-	const int rows = 3;
-	const int cellW = FogWorldWrapW / cols; // 300 px
-	const int cellH = FogWorldWrapH / rows; // 300 px
-	const int col = static_cast<int>(index % cols);
-	const int row = static_cast<int>((index / cols) % rows);
-	const int staggerX = (row & 1) != 0 ? (cellW / 2) : 0;
+	// Distribute across 14 unique vertical & horizontal altitudes using a low-discrepancy
+	// Halton/Golden-Ratio sequence so fog wisps never line up on 2 horizontal rows:
+	const int slotX = static_cast<int>((index * 5U + 2U) % MaxSteamFogBanks);
+	const int slotY = static_cast<int>((index * 9U + 3U) % MaxSteamFogBanks);
+	const int stepX = FogWorldWrapW / static_cast<int>(MaxSteamFogBanks); // ~111 px per X band
+	const int stepY = FogWorldWrapH / static_cast<int>(MaxSteamFogBanks); // ~74 px per Y band (14 distinct Y altitudes!)
 
-	bank.worldX = static_cast<float>((col * cellW + staggerX + 125 + GenerateRnd(50)) % FogWorldWrapW);
-	bank.worldY = static_cast<float>(row * cellH + 115 + GenerateRnd(70));
+	bank.worldX = static_cast<float>((slotX * stepX + GenerateRnd(std::max(1, stepX))) % FogWorldWrapW);
+	bank.worldY = static_cast<float>((slotY * stepY + GenerateRnd(std::max(1, stepY))) % FogWorldWrapH);
 	bank.phase = static_cast<float>(GenerateRnd(628)) * 0.01F;
-	bank.phaseSpeed = 0.40F + static_cast<float>(GenerateRnd(45)) * 0.01F;
+	bank.phaseSpeed = 0.42F + static_cast<float>(GenerateRnd(48)) * 0.01F;
 
-	// Size increased by +20% (rx: 46..79, ry: 18..30)
-	bank.rx = static_cast<int16_t>(46 + GenerateRnd(34));
-	bank.ry = static_cast<int16_t>(18 + GenerateRnd(13));
+	// Per-bank speed variety (0.64x .. 1.42x) + varied vertical drift & sinusoidal vertical meandering
+	bank.speedMultX = 0.64F + static_cast<float>(GenerateRnd(79)) * 0.01F;
+	bank.driftVelY = -9.5F + static_cast<float>(GenerateRnd(165)) * 0.1F; // -9.5 .. +6.9 px/s vertical drift
+	bank.swayAmpY = 10.0F + static_cast<float>(GenerateRnd(140)) * 0.1F;  // 10.0 .. 23.9 px/s vertical wave
+	bank.swayFreq = 0.26F + static_cast<float>(GenerateRnd(32)) * 0.01F;
 
-	// 4 overlapping billowy puffs arranged along an isometric wind-sheared ribbon (+20% scaled offsets)
-	bank.puffOffX[0] = static_cast<int8_t>(-(bank.rx * 3) / 5 - GenerateRnd(9));
-	bank.puffOffY[0] = static_cast<int8_t>(4 + GenerateRnd(7));
-	bank.puffScalePct[0] = static_cast<uint8_t>(68 + GenerateRnd(16));
+	// Morphology variety: allow rounder, billowy cumulus-like vapor puffs alongside soft ovals
+	const int shapeRoll = GenerateRnd(100);
+	int baseRx = 48;
+	int baseRy = 34;
+	if (shapeRoll < 48) {
+		// Rounder, billowy cloud cluster (aspect ~1.12:1 to 1.38:1)
+		baseRx = 38 + GenerateRnd(17); // 38..54 px
+		baseRy = 29 + GenerateRnd(14); // 29..42 px
+	} else if (shapeRoll < 82) {
+		// Balanced tumbled oval cloud (aspect ~1.45:1 to 1.75:1)
+		baseRx = 46 + GenerateRnd(19); // 46..64 px
+		baseRy = 26 + GenerateRnd(12); // 26..37 px
+	} else {
+		// Gently sheared drifting wisp (still much fuller vertically than before: ry 22..31)
+		baseRx = 54 + GenerateRnd(20); // 54..73 px
+		baseRy = 22 + GenerateRnd(10); // 22..31 px
+	}
 
-	bank.puffOffX[1] = static_cast<int8_t>(-(bank.rx / 5) + GenerateRnd(9) - 4);
-	bank.puffOffY[1] = static_cast<int8_t>(-3 - GenerateRnd(6));
-	bank.puffScalePct[1] = 100;
+	// Arrange 4 overlapping puffs in a 2D cluster (top, bottom, left, right lobes) rather than a flat line
+	const int spreadX = (baseRx * 42) / 100;
+	const int spreadY = (baseRy * 38) / 100;
 
-	bank.puffOffX[2] = static_cast<int8_t>((bank.rx / 4) + GenerateRnd(9));
-	bank.puffOffY[2] = static_cast<int8_t>(3 + GenerateRnd(6));
-	bank.puffScalePct[2] = static_cast<uint8_t>(82 + GenerateRnd(15));
+	bank.puffOffX[0] = static_cast<int8_t>(-spreadX - GenerateRnd(7));
+	bank.puffOffY[0] = static_cast<int8_t>(GenerateRnd(spreadY + 1) - (spreadY / 2));
 
-	bank.puffOffX[3] = static_cast<int8_t>((bank.rx * 3) / 5 + GenerateRnd(9));
-	bank.puffOffY[3] = static_cast<int8_t>(-4 - GenerateRnd(6));
-	bank.puffScalePct[3] = static_cast<uint8_t>(64 + GenerateRnd(16));
+	bank.puffOffX[1] = static_cast<int8_t>(-(spreadX / 4) + GenerateRnd(9) - 4);
+	bank.puffOffY[1] = static_cast<int8_t>(-spreadY - GenerateRnd(5));
+
+	bank.puffOffX[2] = static_cast<int8_t>((spreadX / 4) + GenerateRnd(9) - 4);
+	bank.puffOffY[2] = static_cast<int8_t>(spreadY + GenerateRnd(5));
+
+	bank.puffOffX[3] = static_cast<int8_t>(spreadX + GenerateRnd(7));
+	bank.puffOffY[3] = static_cast<int8_t>(GenerateRnd(spreadY + 1) - (spreadY / 2));
+
+	int maxExtentX = 24;
+	int maxExtentY = 20;
+	for (int i = 0; i < 4; ++i) {
+		const int pctX = (i == 1 || i == 2) ? (88 + GenerateRnd(20)) : (74 + GenerateRnd(22));
+		const int pctY = (i == 1 || i == 2) ? (92 + GenerateRnd(22)) : (78 + GenerateRnd(22));
+		bank.puffRx[i] = static_cast<int16_t>(std::max(14, (baseRx * pctX) / 100));
+		bank.puffRy[i] = static_cast<int16_t>(std::max(12, (baseRy * pctY) / 100));
+
+		maxExtentX = std::max(maxExtentX, std::abs(static_cast<int>(bank.puffOffX[i])) + static_cast<int>(bank.puffRx[i]) + 8);
+		maxExtentY = std::max(maxExtentY, std::abs(static_cast<int>(bank.puffOffY[i])) + static_cast<int>(bank.puffRy[i]) + 8);
+	}
+	bank.boundRx = static_cast<int16_t>(maxExtentX);
+	bank.boundRy = static_cast<int16_t>(maxExtentY);
 
 	const bool coolTint = (GenerateRnd(3) == 0);
 	bank.colorIndex = static_cast<uint8_t>((coolTint ? PAL16_BLUE : PAL16_GRAY) + 6 + GenerateRnd(2));
@@ -621,12 +657,14 @@ void DrawSingleSteamFogBank(
 	int rawMaxY = -1;
 
 	for (int i = 0; i < 4; ++i) {
-		const float breath = std::sin(bank.phase + static_cast<float>(i) * 1.35F);
-		puffCx[i] = screenCx + static_cast<int>(bank.puffOffX[i]) + static_cast<int>(breath * 3.0F);
-		puffCy[i] = screenCy + static_cast<int>(bank.puffOffY[i]) + static_cast<int>(std::cos(bank.phase + static_cast<float>(i)) * 2.0F);
+		const float angle = bank.phase + static_cast<float>(i) * 1.5707963F;
+		const float breathX = std::sin(angle);
+		const float breathY = std::cos(angle * 0.85F);
+		puffCx[i] = screenCx + static_cast<int>(bank.puffOffX[i]) + static_cast<int>(breathX * 5.0F);
+		puffCy[i] = screenCy + static_cast<int>(bank.puffOffY[i]) + static_cast<int>(breathY * 4.5F);
 
-		const int prx = std::max(10, (static_cast<int>(bank.rx) * static_cast<int>(bank.puffScalePct[i])) / 100);
-		const int pry = std::max(6, (static_cast<int>(bank.ry) * static_cast<int>(bank.puffScalePct[i])) / 100);
+		const int prx = std::max(12, static_cast<int>(bank.puffRx[i]) + static_cast<int>(breathY * 3.0F));
+		const int pry = std::max(10, static_cast<int>(bank.puffRy[i]) + static_cast<int>(breathX * 2.5F));
 		invRx2[i] = prx * prx;
 		invRy2[i] = pry * pry;
 
@@ -643,35 +681,54 @@ void DrawSingleSteamFogBank(
 	if (minX > maxX || minY > maxY)
 		return;
 
-	// Enforce strict non-overlap against any already-drawn Steam Fog Bank on screen
+	const int bankCx = (rawMinX + rawMaxX) / 2;
+	const int bankCy = (rawMinY + rawMaxY) / 2;
+	const int bankRx = std::max(16, (rawMaxX - rawMinX) / 2);
+	const int bankRy = std::max(14, (rawMaxY - rawMinY) / 2);
+
+	// Elliptical screen-space safety check against any already-drawn Steam Fog Bank
 	for (size_t r = 0; r < drawnCount; ++r) {
-		if (rawMaxX >= drawnRects[r].minX - 6 && rawMinX <= drawnRects[r].maxX + 6
-		    && rawMaxY >= drawnRects[r].minY - 6 && rawMinY <= drawnRects[r].maxY + 6) {
+		const float dx = static_cast<float>(bankCx - drawnRects[r].cx);
+		const float dy = static_cast<float>(bankCy - drawnRects[r].cy);
+		const float sumRx = static_cast<float>(bankRx + drawnRects[r].rx + 8);
+		const float sumRy = static_cast<float>(bankRy + drawnRects[r].ry + 8);
+		if ((dx * dx) / (sumRx * sumRx) + (dy * dy) / (sumRy * sumRy) < 1.0F) {
 			return;
 		}
 	}
 	if (drawnCount < drawnRects.size()) {
-		drawnRects[drawnCount++] = DrawnFogRect { rawMinX, rawMaxX, rawMinY, rawMaxY };
+		drawnRects[drawnCount++] = DrawnFogRect { bankCx, bankCy, bankRx, bankRy };
 	}
 
 	const float pulse = 0.85F + 0.15F * std::sin(bank.phase);
-	const int coreCutoff = static_cast<int>(54.0F * pulse); // Soft inner core cutoff (out of 256)
+	const int coreCutoff = static_cast<int>(64.0F * pulse); // Soft inner core cutoff (out of 256)
 
 	for (int y = minY; y <= maxY; ++y) {
 		for (int x = minX; x <= maxX; ++x) {
-			const int waveOffsetY = (((x - screenCx) * 5) >> 5) & 1;
+			const int waveOffsetY = (((x - screenCx) * 3 + (y - screenCy) * 2) >> 5) & 1;
 			const int wy = y + waveOffsetY;
 
+			// Smooth metaball-style union of the 4 rounded cloud puffs so their lobes blend into organic round clouds
 			int minD2 = 256;
+			int secondMinD2 = 256;
 			for (int i = 0; i < 4; ++i) {
 				const int dy = wy - puffCy[i];
 				const int dyNorm = (dy * dy * 256) / invRy2[i];
-				if (dyNorm >= minD2)
+				if (dyNorm >= secondMinD2)
 					continue;
 				const int dx = x - puffCx[i];
 				const int d2 = (dx * dx * 256) / invRx2[i] + dyNorm;
-				if (d2 < minD2)
+				if (d2 < minD2) {
+					secondMinD2 = minD2;
 					minD2 = d2;
+				} else if (d2 < secondMinD2) {
+					secondMinD2 = d2;
+				}
+			}
+
+			// Smooth bridge between overlapping round puffs
+			if (secondMinD2 < 256) {
+				minD2 = std::max(0, minD2 - ((256 - secondMinD2) >> 3));
 			}
 
 			if (minD2 >= 256)
@@ -861,27 +918,89 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	gCamWorldPixel = newCamWorldPixel;
 	gHasPrevCamPos = true;
 
-	// Update world-space drifting precipitation / steam fog banks with uniform wind velocity
-	// so their non-overlapping lattice spacing is strictly preserved at all times
-	const float fogWindX = -(14.0F + 10.0F * gHeavyBlend);
-	const float fogRiseY = -2.5F;
-	for (auto &bank : gSteamFogBanks) {
+	// Update world-space drifting precipitation / steam fog banks with per-bank speed variety,
+	// organic vertical meandering, and toroidal elliptical collision-avoidance steering
+	// so faster and slower wisps smoothly pass around each other without colliding.
+	const float baseFogWindX = -(15.0F + 11.0F * gHeavyBlend);
+	const float wrapW = static_cast<float>(FogWorldWrapW);
+	const float wrapH = static_cast<float>(FogWorldWrapH);
+	const float halfW = wrapW * 0.5F;
+	const float halfH = wrapH * 0.5F;
+
+	for (size_t i = 0; i < gSteamFogBanks.size(); ++i) {
+		SteamFogBank &bank = gSteamFogBanks[i];
 		bank.phase += bank.phaseSpeed * dt;
 		if (bank.phase > 6.2831853F) {
 			bank.phase -= 6.2831853F;
 		}
-		bank.worldX += fogWindX * dt;
-		bank.worldY += fogRiseY * dt;
 
-		if (bank.worldX < 0.0F) {
-			bank.worldX += static_cast<float>(FogWorldWrapW);
-		} else if (bank.worldX >= static_cast<float>(FogWorldWrapW)) {
-			bank.worldX -= static_cast<float>(FogWorldWrapW);
+		const float waveVelY = std::sin(bank.phase * bank.swayFreq + static_cast<float>(i) * 1.1F) * bank.swayAmpY;
+		const float waveVelX = std::cos(bank.phase * 0.5F + static_cast<float>(i) * 0.7F) * 3.5F;
+
+		bank.worldX += (baseFogWindX * bank.speedMultX + waveVelX) * dt;
+		bank.worldY += (bank.driftVelY + waveVelY) * dt;
+	}
+
+	// Toroidal collision-avoidance solver (2 relaxation passes):
+	// When a faster bank approaches a slower bank, smoothly steer them apart vertically
+	// and horizontally before their cloud radii can touch.
+	for (int pass = 0; pass < 2; ++pass) {
+		for (size_t i = 0; i < gSteamFogBanks.size(); ++i) {
+			for (size_t j = i + 1; j < gSteamFogBanks.size(); ++j) {
+				SteamFogBank &a = gSteamFogBanks[i];
+				SteamFogBank &b = gSteamFogBanks[j];
+
+				float dx = a.worldX - b.worldX;
+				if (dx > halfW)
+					dx -= wrapW;
+				else if (dx < -halfW)
+					dx += wrapW;
+
+				float dy = a.worldY - b.worldY;
+				if (dy > halfH)
+					dy -= wrapH;
+				else if (dy < -halfH)
+					dy += wrapH;
+
+				// Comfort buffer (+26 px X, +24 px Y) so wisps steer around one another smoothly
+				const float minSepX = static_cast<float>(a.boundRx + b.boundRx + 26);
+				const float minSepY = static_cast<float>(a.boundRy + b.boundRy + 24);
+				const float nx = dx / minSepX;
+				const float ny = dy / minSepY;
+				const float distSq = nx * nx + ny * ny;
+
+				if (distSq < 1.0F) {
+					const float dist = std::sqrt( std::max(0.0001F, distSq) );
+					const float overlap = 1.0F - dist;
+					float dirX = nx / dist;
+					float dirY = ny / dist;
+					// Bias vertical steering so horizontally overtaking wisps glide above/below each other
+					if (std::abs(dirY) < 0.35F) {
+						dirY = (dirY >= 0.0F) ? 0.55F : -0.55F;
+					}
+					const float pushX = dirX * overlap * minSepX * 0.52F;
+					const float pushY = dirY * overlap * minSepY * 0.58F;
+					a.worldX += pushX;
+					a.worldY += pushY;
+					b.worldX -= pushX;
+					b.worldY -= pushY;
+				}
+			}
 		}
-		if (bank.worldY < 0.0F) {
-			bank.worldY += static_cast<float>(FogWorldWrapH);
-		} else if (bank.worldY >= static_cast<float>(FogWorldWrapH)) {
-			bank.worldY -= static_cast<float>(FogWorldWrapH);
+	}
+
+	for (auto &bank : gSteamFogBanks) {
+		while (bank.worldX < 0.0F) {
+			bank.worldX += wrapW;
+		}
+		while (bank.worldX >= wrapW) {
+			bank.worldX -= wrapW;
+		}
+		while (bank.worldY < 0.0F) {
+			bank.worldY += wrapH;
+		}
+		while (bank.worldY >= wrapH) {
+			bank.worldY -= wrapH;
 		}
 	}
 

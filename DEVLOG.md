@@ -413,5 +413,12 @@
     - `DrawCell()` in `scrollrt.cpp` redraws `LeftFoliage` / `RightFoliage` (`TransparentSquare` upper triangles) on every walkable Town tile during `DrawTileContent()`, which previously erased any background rain drawn before `DrawTileContent()`.
     - Fixed by rasterizing Layer 0 into a coarse-grid-accelerated screen-space buffer (`gBgRainMask` + `gBgRainBlockGrid`) in `DrawWeatherBackground()`, and compositing it onto each walkable ground tile's 64x32 isometric diamond inside `DrawWeatherGroundTile()` right *after* `mt[0..1]` (`LeftFoliage`/`RightFoliage`) finish and *before* `mt[2..15]` (roofs, walls, arches), solid tiles, trees (`dSpecial`), objects, NPCs, and players are rendered on top.
 
-
-
+### 10.4 Floating Steam Fog Wisps Upgrade: Vertical Distribution, Rounder Cloud Shapes & Variable-Speed Collision Avoidance (`Source/engine/render/weather.cpp`)
+- **Full Vertical Distribution & Meandering (`InitSteamFogBank` & `UpdateWeatherState`):**
+  - Replaced the rigid 3-row (`y = 115, 415, 715`) lattice that caused fog wisps to travel along 2 visible horizontal lanes on screen with a 14-altitude low-discrepancy distribution across `1560 x 1040` world pixels (`74 px` vertical bands).
+  - Added per-bank diagonal vertical drift (`driftVelY = -9.5 .. +6.9 px/s`) and sinusoidal vertical wave undulation (`swayAmpY = 10.0 .. 23.9 px/s`, `swayFreq = 0.26 .. 0.57`) so wisps glide across all vertical heights with organic upward and downward motion.
+- **Rounder Cloud Morphologies (`SteamFogBank` & `DrawSingleSteamFogBank`):**
+  - Replaced the flat horizontal ribbon puff layout (`rx = 46..79, ry = 18..30`) with 2D 4-lobe cloud clusters (left, top, bottom, and right puffs) supporting rounder cumulus-like clouds (`rx = 38..54, ry = 29..42`, aspect `~1.15:1` to `1.38:1`), tumbled ovals (`rx = 46..64, ry = 26..37`), and full-bodied wisps, blended with a smooth metaball bridge (`secondMinD2`) between adjacent lobes.
+- **Per-Bank Speed Variety (`0.64x .. 1.42x`) with Toroidal Collision-Avoidance Solver:**
+  - Each fog bank now has its own wind speed multiplier (`speedMultX = 0.64F .. 1.42F`).
+  - Added a 2-pass toroidal elliptical collision-avoidance solver in `UpdateWeatherState()` (plus an elliptical screen-space guard in `DrawSingleSteamFogBank()`) that detects when a faster bank approaches a slower bank and smoothly steers them apart vertically and horizontally (`+26 px` X / `+24 px` Y comfort buffer) so wisps never collide or stack.
