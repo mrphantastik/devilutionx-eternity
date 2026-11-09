@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/new-splash.png" alt="Alt Text" width="70%">
 </p>
-
+.
 # DX:Eternity
 
 **DX:Eternity** is a gameplay, atmospheric and audiovisual revamp built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine. 

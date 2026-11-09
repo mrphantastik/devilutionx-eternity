@@ -43,10 +43,10 @@
   - Verify `handle.read()` in `LoadFileInMem()` (`Source/engine/load_file.hpp`) before returning the buffer so failed reads never pass uninitialized memory to CLX font/sprite renderers
   - Disable `SDL_DYNAMIC_API` (`SDL_DYNAMIC_API=0`) in `Source/CMakeLists.txt` so static SDL2 builds never load an older `SDL2.dll` from the game directory, and keep `SetChunkStream()` at the 16 MB threshold so `dtowne.wav` (~31 MB) streams asynchronously
 - [x] **Phase 10: Level Palette Randomizer (`DevilutionXRandomizer` Integration)**
-  - Enabled by default (`[Graphics] Randomize Level Palettes` in `diablo.ini`) with live in-game `ESC -> Options -> Randomize Palettes: ON/OFF` toggle (`Source/gamemenu.cpp`, `Source/gmenu.cpp`) that rerolls or restores the active level palette immediately
-  - Direct loose folder lookup (`paths::BasePath() + relativePath`) in `FindAsset()` (`Source/engine/assets.cpp`) so `<GameDir>\palette\...` loads without requiring an MPQ repack
-  - Deterministic per-floor Murmur3 seed hashing (`glSeedTbl[currlevel]`, `currlevel`, `leveltype`, `sgPaletteRerollSalt`) that never perturbs the gameplay `GenerateRnd` LCG
-  - Native support for `DevilutionXRandomizer` `.pal` presets (`palette\towndata\town_1..3.pal`, `l1_1..66.pal`, `l2_1..74.pal`, `l3_1..58.pal`, `l4_1..46.pal`, `l5_1..74.pal`, `l6_1..79.pal`) from `<GameDir>\palette\` or `dx-eternity.mpq`, plus a built-in procedural HSV shift fallback on level palette indices `1..127`
+  - Enabled by default (`[Graphics] Randomize Level Palettes` in `diablo.ini`) with live in-game `ESC -> Options -> Randomize Palettes: ON/OFF` toggle (`Source/gamemenu.cpp`, `Source/gmenu.cpp`) that switches between the floor's vanilla palette and its locked deterministic randomized palette without rerolling on the spot
+  - Preserves vanilla Town (`levels\towndata\town.pal`) unconditionally and supports direct loose folder lookup (`paths::BasePath() + relativePath`) in `FindAsset()` (`Source/engine/assets.cpp`)
+  - Deterministic per-floor Murmur3 seed hashing (`glSeedTbl[currlevel]`, `currlevel`, `leveltype`) that never perturbs the gameplay `GenerateRnd` LCG
+  - Multi-hue quality filter (`IsMultiHuePalette`) across `DevilutionXRandomizer` dungeon `.pal` presets (`l1_1..66.pal`, `l2_1..74.pal`, `l3_1..58.pal`, `l4_1..46.pal`, `l5_1..74.pal`, `l6_1..79.pal`) that automatically skips flat 1-color monochrome presets, plus a split-complementary procedural shift fallback that preserves neutral greyscale stone
 - [ ] **Phase 11 (Upcoming): Dungeon Particle & Atmospheric Effects**
   - Biome-specific environmental particle layers (drifting ash, cavern embers, and underground mist)
 - [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**

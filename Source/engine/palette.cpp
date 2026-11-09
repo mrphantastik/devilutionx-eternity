@@ -145,8 +145,14 @@ void CycleColorsReverse(int from, int to)
 	std::rotate(paletteTransparencyLookup.begin() + from, paletteTransparencyLookup.begin() + to, paletteTransparencyLookup.begin() + to + 1);
 }
 
+struct RawPalColor {
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+};
+
 /**
- * @brief Checks if a custom palette asset exists in MPQs or save/data paths.
+ * @brief Checks if a custom palette asset exists in MPQs or loose game/save/assets paths.
  */
 bool AssetPaletteExists(const char *pszFileName)
 {
@@ -154,11 +160,75 @@ bool AssetPaletteExists(const char *pszFileName)
 	return ref.ok() && ref.size() >= 768;
 }
 
-uint32_t sgPaletteRerollSalt = 0;
+/**
+ * @brief Rejects monochrome / single-hue "colorized" .pal presets in DevilutionXRandomizer
+ * where >68% of all saturated level colors (1..127) are crammed into a single 40-degree hue window
+ * or fewer than 3 distinct 30-degree hue buckets are populated.
+ */
+bool IsMultiHuePalette(const std::array<RawPalColor, 256> &palData)
+{
+	float hues[128];
+	int hueCount = 0;
+	int bucketCounts[12] = {};
+
+	for (int i = 1; i < 128; i++) {
+		const int r = palData[i].r;
+		const int g = palData[i].g;
+		const int b = palData[i].b;
+		const int cmax = std::max({ r, g, b });
+		const int cmin = std::min({ r, g, b });
+		const int delta = cmax - cmin;
+
+		// Require non-trivial brightness (cmax >= 28) and saturation (delta / cmax >= ~0.12)
+		if (cmax >= 28 && delta * 255 >= cmax * 30) {
+			float h = 0.0F;
+			if (cmax == r)
+				h = 60.0F * std::fmod(static_cast<float>(g - b) / static_cast<float>(delta), 6.0F);
+			else if (cmax == g)
+				h = 60.0F * ((static_cast<float>(b - r) / static_cast<float>(delta)) + 2.0F);
+			else
+				h = 60.0F * ((static_cast<float>(r - g) / static_cast<float>(delta)) + 4.0F);
+			if (h < 0.0F)
+				h += 360.0F;
+
+			hues[hueCount++] = h;
+			const int bucket = static_cast<int>(h / 30.0F) % 12;
+			bucketCounts[bucket]++;
+		}
+	}
+
+	if (hueCount < 16)
+		return false;
+
+	int activeBuckets = 0;
+	for (int count : bucketCounts) {
+		if (count >= 3)
+			activeBuckets++;
+	}
+	if (activeBuckets < 3)
+		return false;
+
+	int maxIn40Deg = 0;
+	for (int center = 0; center < 360; center += 5) {
+		int cnt = 0;
+		for (int i = 0; i < hueCount; i++) {
+			float diff = std::fabs(hues[i] - static_cast<float>(center));
+			if (diff > 180.0F)
+				diff = 360.0F - diff;
+			if (diff <= 20.0F)
+				cnt++;
+		}
+		if (cnt > maxIn40Deg)
+			maxIn40Deg = cnt;
+	}
+
+	// Reject if more than 68% of colored entries fall within a single 40-degree hue cone
+	return (maxIn40Deg * 100) <= (hueCount * 68);
+}
 
 /**
  * @brief Deterministic Murmur3-style hash from the current level's seed and depth
- * so palette selection never perturbs the gameplay RNG (GenerateRnd).
+ * so palette selection is fixed per floor and never perturbs gameplay RNG (GenerateRnd).
  */
 uint32_t GetLevelPaletteHash(dungeon_type l)
 {
@@ -167,7 +237,6 @@ uint32_t GetLevelPaletteHash(dungeon_type l)
 		h = static_cast<uint32_t>(glSeedTbl[1]);
 	h ^= static_cast<uint32_t>(currlevel) * 0x9E3779B9U;
 	h ^= static_cast<uint32_t>(l) * 0x85EBCA6BU;
-	h ^= sgPaletteRerollSalt * 0xC2B2AE35U;
 	h ^= h >> 16;
 	h *= 0x85EBCA6BU;
 	h ^= h >> 13;
@@ -177,15 +246,16 @@ uint32_t GetLevelPaletteHash(dungeon_type l)
 }
 
 /**
- * @brief Fallback procedural hue/saturation/contrast shift on level-specific
- * palette entries (indices 1..127) when external DevilutionXRandomizer .pal
- * files are not present, preserving global UI/item/monster indices 0 and 128..255.
+ * @brief Fallback procedural split-complementary hue/saturation shift on already-colored
+ * level palette entries (indices 1..127) when external DevilutionXRandomizer .pal files
+ * are not present. Neutral greyscale stone (s < 0.10) is left untouched so levels never
+ * turn into a flat 1-color monochrome wash.
  */
 void ApplyProceduralPaletteShift(uint32_t hash)
 {
-	// Derive hue rotation (in degrees, avoiding near-0 no-op shifts) and saturation scale
-	const float hueShiftDeg = 25.0F + static_cast<float>(hash % 310U);
-	const float satScale = 0.80F + static_cast<float>((hash >> 9) % 55U) * 0.01F; // 0.80 .. 1.34
+	const float hueShiftPrimary = 35.0F + static_cast<float>(hash % 290U);
+	const float hueShiftSecondary = std::fmod(hueShiftPrimary + 115.0F, 360.0F);
+	const float satScale = 0.85F + static_cast<float>((hash >> 9) % 35U) * 0.01F; // 0.85 .. 1.19
 
 	for (int i = 1; i < 128; i++) {
 		float r = orig_palette[i].r / 255.0F;
@@ -196,27 +266,25 @@ void ApplyProceduralPaletteShift(uint32_t hash)
 		float cmin = std::min({ r, g, b });
 		float delta = cmax - cmin;
 
-		float h = 0.0F;
-		if (delta > 0.0001F) {
-			if (cmax == r)
-				h = 60.0F * std::fmod(((g - b) / delta), 6.0F);
-			else if (cmax == g)
-				h = 60.0F * (((b - r) / delta) + 2.0F);
-			else
-				h = 60.0F * (((r - g) / delta) + 4.0F);
-			if (h < 0.0F)
-				h += 360.0F;
-		}
 		float s = (cmax <= 0.0001F) ? 0.0F : (delta / cmax);
 		float v = cmax;
 
-		// If the base tile color is nearly pure greyscale (e.g. Cathedral/Crypt stone),
-		// inject a subtle atmospheric tint so the randomized palette is still distinct.
-		if (s < 0.12F && v > 0.05F) {
-			s = std::min(1.0F, s + 0.18F);
-		}
+		// Leave neutral greyscale stone/shadows untouched so the level never becomes 1 flat color
+		if (s < 0.10F || v <= 0.04F)
+			continue;
 
-		h = std::fmod(h + hueShiftDeg, 360.0F);
+		float h = 0.0F;
+		if (cmax == r)
+			h = 60.0F * std::fmod(((g - b) / delta), 6.0F);
+		else if (cmax == g)
+			h = 60.0F * (((b - r) / delta) + 2.0F);
+		else
+			h = 60.0F * (((r - g) / delta) + 4.0F);
+		if (h < 0.0F)
+			h += 360.0F;
+
+		const float shift = (i < 32 || (i >= 64 && i < 96)) ? hueShiftPrimary : hueShiftSecondary;
+		h = std::fmod(h + shift, 360.0F);
 		s = clamp(s * satScale, 0.0F, 1.0F);
 
 		float c = v * s;
@@ -335,12 +403,16 @@ void LoadRndLvlPal(dungeon_type l)
 	if (HeadlessMode)
 		return;
 
-	// Preserve exact vanilla GenerateRnd(4) call count for non-town levels
-	// so dungeon generation seeds and multiplayer sync remain 100% identical.
-	int rv = 1;
-	if (l != DTYPE_TOWN) {
-		rv = GenerateRnd(4) + 1;
+	// Town (Tristram) always uses its original vanilla palette so returning to Town
+	// or starting a New Game never recolors Tristram.
+	if (l == DTYPE_TOWN) {
+		LoadPalette("levels\\towndata\\town.pal");
+		return;
 	}
+
+	// Preserve exact vanilla GenerateRnd(4) call count for dungeon levels
+	// so dungeon generation seeds and multiplayer sync remain 100% identical.
+	int rv = GenerateRnd(4) + 1;
 
 	if (*sgOptions.Graphics.randomizePalette) {
 		const uint32_t hash = GetLevelPaletteHash(l);
@@ -352,11 +424,8 @@ void LoadRndLvlPal(dungeon_type l)
 			uint32_t count;
 		};
 
-		RndPalInfo info = { "towndata", "town", 3 };
+		RndPalInfo info = { "l1data", "l1", 66 };
 		switch (l) {
-		case DTYPE_TOWN:
-			info = { "towndata", "town", 3 };
-			break;
 		case DTYPE_CATHEDRAL:
 			info = { "l1data", "l1", 66 };
 			break;
@@ -379,20 +448,38 @@ void LoadRndLvlPal(dungeon_type l)
 			break;
 		}
 
-		const uint32_t rndIdx = (hash % info.count) + 1;
-		*fmt::format_to(szRndFileName, R"(palette\{0}\{1}_{2}.pal)", info.folder, info.prefix, rndIdx) = '\0';
+		const uint32_t startIdx = hash % info.count;
+		for (uint32_t step = 0; step < info.count; step++) {
+			const uint32_t rndIdx = ((startIdx + step) % info.count) + 1;
+			*fmt::format_to(szRndFileName, R"(palette\{0}\{1}_{2}.pal)", info.folder, info.prefix, rndIdx) = '\0';
+			if (!AssetPaletteExists(szRndFileName)) {
+				if (step == 0)
+					break; // Palette folder for this dungeon is not installed
+				continue;
+			}
 
-		if (AssetPaletteExists(szRndFileName)) {
-			LoadPalette(szRndFileName);
+			std::array<RawPalColor, 256> palData;
+			LoadFileInMem(szRndFileName, palData);
+			if (!IsMultiHuePalette(palData))
+				continue; // Reject flat 1-color monochrome preset and try next preset
+
+			for (unsigned i = 0; i < palData.size(); i++) {
+				orig_palette[i].r = palData[i].r;
+				orig_palette[i].g = palData[i].g;
+				orig_palette[i].b = palData[i].b;
+#ifndef USE_SDL1
+				orig_palette[i].a = SDL_ALPHA_OPAQUE;
+#endif
+			}
+			if (leveltype == DTYPE_CAVES || leveltype == DTYPE_CRYPT) {
+				GenerateBlendedLookupTable(orig_palette, 1, 31);
+			} else if (leveltype == DTYPE_NEST) {
+				GenerateBlendedLookupTable(orig_palette, 1, 15);
+			} else {
+				GenerateBlendedLookupTable(orig_palette, -1, -1);
+			}
 			return;
 		}
-	}
-
-	if (l == DTYPE_TOWN) {
-		LoadPalette("levels\\towndata\\town.pal");
-		if (*sgOptions.Graphics.randomizePalette)
-			ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
-		return;
 	}
 
 	if (l == DTYPE_CRYPT) {
@@ -414,11 +501,6 @@ void LoadRndLvlPal(dungeon_type l)
 	LoadPalette(szFileName);
 	if (*sgOptions.Graphics.randomizePalette)
 		ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
-}
-
-void AdvancePaletteRerollSalt()
-{
-	sgPaletteRerollSalt++;
 }
 
 void IncreaseGamma()

@@ -305,10 +305,8 @@ void OptionShowFPSChanged()
 
 void OptionRandomizePaletteChanged()
 {
-	if (!gbRunGame || setlevel)
+	if (!gbRunGame || setlevel || leveltype == DTYPE_TOWN)
 		return;
-	if (*sgOptions.Graphics.randomizePalette)
-		AdvancePaletteRerollSalt();
 	LoadRndLvlPal(leveltype);
 	ApplyGamma(logical_palette, orig_palette, 256);
 	SetFadeLevel(256);
