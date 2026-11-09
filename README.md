@@ -18,7 +18,7 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 ---
 
 ### Dungeon Palette Randomization
-- Dynamically randomizes color palettes across dungeon floor, introducing distinct environmental variety.
+- Dynamically randomizes color palettes across dungeons, introducing distinct environmental variety.
 - Adapted and integrated from [DevilutionXRandomizer](https://github.com/stoffelkopf/DevilutionXRandomizer) by **stoffelkopf**.
 
 ---
