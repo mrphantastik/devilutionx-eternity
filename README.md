@@ -31,8 +31,8 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 
 ### Seamless Dungeon Branches: Hive & Crypt
 *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
-- **The Hive (Levels 17–20):** Accessible via a downward stairway on **Caves Level 12**.
-- **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
+- **The Hive**:Accessible via a downward stairway on **Caves Level 12**.
+- **The Crypt:** Accessible via a descent discovered on **Hell Level 14**.
 - Both branches utilize pure vanilla Diablo I drop and affix tables.
 - Out-of-place *Hellfire* sprites have been replaced with proper, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
 
