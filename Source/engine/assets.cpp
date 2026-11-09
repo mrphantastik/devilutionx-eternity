@@ -141,6 +141,7 @@ AssetRef FindAsset(const char *filename)
 
 	// Look for the file in all the MPQ archives:
 	if (FindMpqFile(filename, &result.archive, &result.fileNumber)) {
+		SDL_ClearError();
 		result.filename = filename;
 		return result;
 	}

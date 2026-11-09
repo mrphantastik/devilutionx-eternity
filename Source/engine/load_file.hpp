@@ -40,8 +40,9 @@ void LoadFileInMem(const char *path, T *data, std::size_t count)
 	if (!ValidateHandle(path, handle))
 		return;
 	const size_t bytesToRead = std::min(size, count * sizeof(T));
-	if (bytesToRead > 0 && !handle.read(data, bytesToRead) && !HeadlessMode)
-		FailedToOpenFileError(path, handle.error());
+	if (bytesToRead == 0)
+		return;
+	handle.read(data, bytesToRead);
 }
 
 template <typename T>
