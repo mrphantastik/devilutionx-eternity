@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -34,18 +35,24 @@ void LoadFileInMem(const char *path, T *data)
 template <typename T>
 void LoadFileInMem(const char *path, T *data, std::size_t count)
 {
-	AssetHandle handle = OpenAsset(path);
+	size_t size = 0;
+	AssetHandle handle = OpenAsset(path, size);
 	if (!ValidateHandle(path, handle))
 		return;
-	if (!handle.read(data, count * sizeof(T)) && !HeadlessMode)
+	const size_t bytesToRead = std::min(size, count * sizeof(T));
+	if (bytesToRead > 0 && !handle.read(data, bytesToRead) && !HeadlessMode)
 		FailedToOpenFileError(path, handle.error());
 }
 
 template <typename T>
 bool LoadOptionalFileInMem(const char *path, T *data, std::size_t count)
 {
-	AssetHandle handle = OpenAsset(path);
-	return handle.ok() && handle.read(data, count * sizeof(T));
+	size_t size = 0;
+	AssetHandle handle = OpenAsset(path, size);
+	if (!handle.ok())
+		return false;
+	const size_t bytesToRead = std::min(size, count * sizeof(T));
+	return bytesToRead > 0 && handle.read(data, bytesToRead);
 }
 
 template <typename T, std::size_t N>
