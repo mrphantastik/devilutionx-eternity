@@ -403,13 +403,15 @@
 
 ### 10.3 3D Multi-Plane Depth Rain Upgrade — Wall/Roof-Safe Edition (`Source/engine/render/weather.h`, `Source/engine/render/weather.cpp`, `Source/engine/render/scrollrt.cpp`)
 - **File:** `Source/engine/render/weather.h`, `Source/engine/render/scrollrt.cpp`, `Source/engine/render/weather.cpp`
-  - **Multi-Plane Camera Parallax, Perspective Slant Fan & 8-Bit Quantization-Safe Opacity (`RainDrop`):**
-    - **Layer 0 (Distant Background Rain, 40% of drops):** `0.58x` camera parallax (moves slower than the ground), `0.55x..0.72x` fall speed, more vertical `-0.12` (`-0.17` Heavy) slant angle, `9..13 px` 1px streaks (`Blend50` head -> `Blend25` tail using `PAL16_BLUE/GRAY + 2..3`).
-    - **Layer 1 (Midground World-Plane Air Rain, 40% of drops):** `1.00x` camera parallax (locked to the world plane), `0.95x..1.18x` fall speed, `-0.21` (`-0.29` Heavy) slant angle, `17..24 px` crisp 1px streaks (`Blend75` head -> `Blend50` body -> `Blend25` tail).
-    - **Layer 2 (Near-Camera Foreground "Lens" Rain, 20% of drops):** `1.65x` camera parallax (whips past the camera when walking), `1.65x..2.15x` fall speed, steeper `-0.31` (`-0.41` Heavy) perspective slant angle, `34..48 px` streaks with a **2px–3px Depth-of-Field soft cross-section** (`Blend75` core + `Blend50` & `Blend25` lateral blur wings that remain visible under 8-bit LUT palette quantization).
+  - **Multi-Plane Camera Parallax, Perspective Slant Fan & Tuned Per-Layer Transparency (`RainDrop`):**
+    - Added fine-grained binary LUT blend helpers `Blend37(fg, bg)` (37.5% fg / 62.5% bg) and `Blend19(fg, bg)` (18.75% fg / 81.25% bg) alongside `Blend50` and `Blend25`.
+    - **Layer 0 (Distant Background Rain, 42% of drops, +5% transparency):** `0.58x` camera parallax (moves slower than the ground), `0.55x..0.72x` fall speed, more vertical `-0.12` (`-0.17` Heavy) slant angle, `9..13 px` 1px streaks (`Blend37` top-33% head -> `Blend25` tail using `PAL16_BLUE/GRAY + 3..4`).
+    - **Layer 1 (Midground World-Plane Air Rain, 42% of drops, +15% transparency):** `1.00x` camera parallax (locked to the world plane), `0.95x..1.18x` fall speed, `-0.21` (`-0.29` Heavy) slant angle, `17..24 px` crisp 1px streaks (`Blend50` head -> `Blend37` body -> `Blend25` tail using `PAL16_BLUE/GRAY + 2..3`).
+    - **Layer 2 (Near-Camera Foreground "Lens" Rain, 16% of drops, +35% transparency):** `1.65x` camera parallax (whips past the camera when walking), `1.65x..2.15x` fall speed, steeper `-0.31` (`-0.41` Heavy) perspective slant angle, `34..48 px` streaks with a translucent **2px–3px Depth-of-Field soft cross-section** (`Blend50` -> `Blend37` -> `Blend25` -> `Blend19` core using `PAL16_GRAY/BLUE + 2..3`, paired with `Blend25` right and `Blend19` left lateral DoF blur wings at shade `+2` so near-camera drops remain soft and atmospheric without glaring).
     - Each layer's horizontal wind velocity (`dropWindVel = dropFallVel * layerSlant`) is locked to its drawn slant angle so every drop shoots strictly along its perspective streak vector.
   - **True Scene Occlusion Behind Buildings, Roofs, Rocks & Trees Without `DrawCell()` Ground Overwrite (`DrawWeatherBackground` & `DrawWeatherGroundTile`):**
     - `DrawCell()` in `scrollrt.cpp` redraws `LeftFoliage` / `RightFoliage` (`TransparentSquare` upper triangles) on every walkable Town tile during `DrawTileContent()`, which previously erased any background rain drawn before `DrawTileContent()`.
     - Fixed by rasterizing Layer 0 into a coarse-grid-accelerated screen-space buffer (`gBgRainMask` + `gBgRainBlockGrid`) in `DrawWeatherBackground()`, and compositing it onto each walkable ground tile's 64x32 isometric diamond inside `DrawWeatherGroundTile()` right *after* `mt[0..1]` (`LeftFoliage`/`RightFoliage`) finish and *before* `mt[2..15]` (roofs, walls, arches), solid tiles, trees (`dSpecial`), objects, NPCs, and players are rendered on top.
+
 
 

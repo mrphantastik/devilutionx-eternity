@@ -184,6 +184,20 @@ inline uint8_t Blend25(uint8_t fg, uint8_t bg)
 	return paletteTransparencyLookup[bg][mid];
 }
 
+inline uint8_t Blend37(uint8_t fg, uint8_t bg)
+{
+	const uint8_t half = paletteTransparencyLookup[fg][bg];
+	const uint8_t qtr = paletteTransparencyLookup[bg][half];
+	return paletteTransparencyLookup[half][qtr]; // 37.5% fg, 62.5% bg
+}
+
+inline uint8_t Blend19(uint8_t fg, uint8_t bg)
+{
+	const uint8_t qtr = Blend25(fg, bg);
+	const uint8_t eighth = paletteTransparencyLookup[bg][qtr];
+	return paletteTransparencyLookup[qtr][eighth]; // 18.75% fg, 81.25% bg
+}
+
 inline uint8_t Blend12(uint8_t fg, uint8_t bg)
 {
 	const uint8_t qtr = Blend25(fg, bg);
@@ -212,11 +226,27 @@ inline void PlotBlended50(const Surface &out, int x, int y, uint8_t fg)
 	}
 }
 
+inline void PlotBlended37(const Surface &out, int x, int y, uint8_t fg)
+{
+	if (x >= 0 && x < out.w() && y >= 0 && y < out.h()) {
+		uint8_t &px = out[{ x, y }];
+		px = Blend37(fg, px);
+	}
+}
+
 inline void PlotBlended25(const Surface &out, int x, int y, uint8_t fg)
 {
 	if (x >= 0 && x < out.w() && y >= 0 && y < out.h()) {
 		uint8_t &px = out[{ x, y }];
 		px = Blend25(fg, px);
+	}
+}
+
+inline void PlotBlended19(const Surface &out, int x, int y, uint8_t fg)
+{
+	if (x >= 0 && x < out.w() && y >= 0 && y < out.h()) {
+		uint8_t &px = out[{ x, y }];
+		px = Blend19(fg, px);
 	}
 }
 
@@ -324,27 +354,27 @@ void InitRainDrop(RainDrop &drop, int viewW, int viewH, bool randomY)
 	    : -static_cast<float>(GenerateRnd(64));
 
 	const int roll = GenerateRnd(100);
-	if (roll < 40) {
-		// Layer 0: Distant background rain (composited on walkable ground behind roofs, rocks, trees, and walls)
+	if (roll < 42) {
+		// Layer 0: Distant background rain (+5% transparency: softer shade + shorter 33% head blend)
 		drop.layer = 0;
 		drop.parallaxScale = 0.58F;
 		drop.speedScale = 0.55F + static_cast<float>(GenerateRnd(18)) * 0.01F;
 		drop.length = static_cast<uint8_t>(9 + GenerateRnd(5)); // 9..13 px
-		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 2 + GenerateRnd(2));
-	} else if (roll < 80) {
-		// Layer 1: Midground world-plane air rain
+		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 3 + GenerateRnd(2));
+	} else if (roll < 84) {
+		// Layer 1: Midground world-plane air rain (+15% transparency: softer shade + 50%/37.5%/25% blend)
 		drop.layer = 1;
 		drop.parallaxScale = 1.00F;
 		drop.speedScale = 0.95F + static_cast<float>(GenerateRnd(24)) * 0.01F;
 		drop.length = static_cast<uint8_t>(17 + GenerateRnd(8)); // 17..24 px
-		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 1 + GenerateRnd(2));
+		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 2 + GenerateRnd(2));
 	} else {
-		// Layer 2: Near-camera foreground "lens" rain (whips past camera with 2px-3px DoF blur)
+		// Layer 2: Near-camera foreground "lens" rain (+35% transparency: softer shade + 50%/37.5%/25%/18.75% DoF blur)
 		drop.layer = 2;
 		drop.parallaxScale = 1.65F;
 		drop.speedScale = 1.65F + static_cast<float>(GenerateRnd(50)) * 0.01F;
 		drop.length = static_cast<uint8_t>(34 + GenerateRnd(15)); // 34..48 px
-		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_GRAY : PAL16_BLUE) + GenerateRnd(2));
+		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_GRAY : PAL16_BLUE) + 2 + GenerateRnd(2));
 	}
 }
 
@@ -1003,7 +1033,7 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 						const uint8_t col = static_cast<uint8_t>(packed & 0xFFU);
 						const uint8_t blendMode = static_cast<uint8_t>(packed >> 8U);
 						uint8_t &dstPx = out[{ px, py }];
-						dstPx = (blendMode >= 2) ? Blend50(col, dstPx) : Blend25(col, dstPx);
+						dstPx = (blendMode >= 2) ? Blend37(col, dstPx) : Blend25(col, dstPx);
 					}
 				}
 			}
@@ -1066,7 +1096,7 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 			if (px < 0 || px >= viewW || py < 0 || py >= viewH)
 				continue;
 
-			const uint16_t blendMode = (step * 5 < totalLen * 2) ? 2U : 1U; // 2 = Blend50 head, 1 = Blend25 tail
+			const uint16_t blendMode = (step * 3 < totalLen) ? 2U : 1U; // +5% transparency: 37.5% head (top 33%), 25% tail
 			gBgRainMask[py * viewW + px] = static_cast<uint16_t>((blendMode << 8U) | drop.colorIndex);
 			gBgRainBlockGrid[(py >> 4) * gBgRainBlockCols + (px >> 5)] = 1;
 		}
@@ -1132,7 +1162,8 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		const float slantXPerY = (drop.layer == 2 ? slant2 : slant1) + gust;
 
 		if (drop.layer == 1) {
-			// Layer 1 (Midground world-plane air streak): crisp 1px streak (75% -> 50% -> 25%)
+			// Layer 1 (Midground world-plane air streak, +15% transparency):
+			// Softened from (75% -> 50% -> 25%) to (50% head -> 37.5% body -> 25% tail)
 			for (int step = 0; step < totalLen; ++step) {
 				const int py = headY - step;
 				const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
@@ -1140,33 +1171,41 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 					continue;
 
 				if (step * 4 < totalLen) {
-					PlotBlended75(out, px, py, drop.colorIndex);
-				} else if (step * 10 < totalLen * 7) {
 					PlotBlended50(out, px, py, drop.colorIndex);
+				} else if (step * 5 < totalLen * 3) {
+					PlotBlended37(out, px, py, drop.colorIndex);
 				} else {
 					PlotBlended25(out, px, py, drop.colorIndex);
 				}
 			}
 		} else {
-			// Layer 2 (Near-Camera Foreground "Lens" Rain): fast, long, steeper-angled streak
-			// with true 2px-3px Depth-of-Field blur (using 75%/50%/25% blends so 8-bit palette
-			// quantization preserves the full multi-pixel soft-focus width).
-			const uint8_t haloCol = static_cast<uint8_t>(drop.colorIndex + 1);
+			// Layer 2 (Near-Camera Foreground "Lens" Rain, +35% transparency):
+			// Softened by ~35% so near-camera drops are translucent and atmospheric rather than bright/glaring:
+			// Core uses 50% -> 37.5% -> 25% -> 18.75% and DoF wings use 25% / 18.75% with darker halo shade (+2).
+			const uint8_t haloCol = static_cast<uint8_t>(drop.colorIndex + 2);
 			for (int step = 0; step < totalLen; ++step) {
 				const int py = headY - step;
 				const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
 				if (px < 1 || px >= out.w() - 1 || py < 0 || py >= out.h())
 					continue;
 
-				if (step * 3 < totalLen) {
-					PlotBlended75(out, px, py, drop.colorIndex);
-					PlotBlended50(out, px + 1, py, haloCol);
-					PlotBlended25(out, px - 1, py, haloCol);
-				} else if (step * 3 < totalLen * 2) {
+				if (step * 5 < totalLen) {
+					// Leading 20% head: 50% core + 25% right DoF wing + 18.75% left DoF wing
 					PlotBlended50(out, px, py, drop.colorIndex);
 					PlotBlended25(out, px + 1, py, haloCol);
-				} else {
+					PlotBlended19(out, px - 1, py, haloCol);
+				} else if (step * 2 < totalLen) {
+					// Upper-mid 30%: 37.5% core + 25% right DoF wing + 18.75% left DoF wing
+					PlotBlended37(out, px, py, drop.colorIndex);
+					PlotBlended25(out, px + 1, py, haloCol);
+					PlotBlended19(out, px - 1, py, haloCol);
+				} else if (step * 4 < totalLen * 3) {
+					// Lower-mid 25%: 25% core + 18.75% right DoF wing
 					PlotBlended25(out, px, py, drop.colorIndex);
+					PlotBlended19(out, px + 1, py, haloCol);
+				} else {
+					// Trailing 25% tail: 18.75% core taper
+					PlotBlended19(out, px, py, drop.colorIndex);
 				}
 			}
 		}
