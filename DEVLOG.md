@@ -422,3 +422,30 @@
 - **Per-Bank Speed Variety (`0.64x .. 1.42x`) with Toroidal Collision-Avoidance Solver:**
   - Each fog bank now has its own wind speed multiplier (`speedMultX = 0.64F .. 1.42F`).
   - Added a 2-pass toroidal elliptical collision-avoidance solver in `UpdateWeatherState()` (plus an elliptical screen-space guard in `DrawSingleSteamFogBank()`) that detects when a faster bank approaches a slower bank and smoothly steers them apart vertically and horizontally (`+26 px` X / `+24 px` Y comfort buffer) so wisps never collide or stack.
+
+---
+
+## Phase 11: 3D Isometric Volumetric Ground Fog & Interactive Entity Dispersion
+
+### 11.1 Volumetric Ground Fog Engine (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`, `Source/CMakeLists.txt`)
+- **Pure 8-Bit Native Pipeline & Deterministic RNG Safety:**
+  - Operates directly on DevilutionX's 8-bit `Surface` (`PalSurface`), `paletteTransparencyLookup` (`Blend50`, `Blend25`, `Blend12`, `Blend6`), and `LightTables[LightTableIndex]` with zero dependency on dynamic lighting or `gbuffer`.
+  - Uses a precomputed seamless `256x256` 3-octave FBM value-noise lookup table (`gFogNoiseLut`) and integer hashing (`FastHash2D`) so `GenerateRnd()` is never called and level seeds/multiplayer stay 100% deterministic.
+- **Per-Dungeon Biome Presets (`GetLevelFogConfig`):**
+  - **Cathedral (`DTYPE_CATHEDRAL`):** Low/medium density (`maxDensity = 150`), cold spectral mist (`PAL16_GRAY + 5` / `PAL16_GRAY + 9`).
+  - **Catacombs (`DTYPE_CATACOMBS`):** Medium density (`maxDensity = 170`), dusty bone-beige & eerie gray mist (`PAL16_BEIGE + 6` / `PAL16_GRAY + 9`).
+  - **Caves (`DTYPE_CAVES`):** Medium density (`maxDensity = 175`), rising sulfurous thermal steam (`driftDivY = -60`).
+  - **Hell (`DTYPE_HELL`):** Thick charcoal/blackish rising smoke (`maxDensity = 210`, `PAL16_GRAY + 14` / `PAL16_GRAY + 12`, `isDarkSmoke = true`, `allowHeavyBlend = true`, fast upward thermal draft `driftDivY = -40`).
+  - **Crypt (`DTYPE_CRYPT`):** High density (`maxDensity = 250`), thick ancient tomb fog (`PAL16_GRAY + 3` / `PAL16_GRAY + 7`, `allowHeavyBlend = true` with `50%` core banks).
+  - **Nest / Hive (`DTYPE_NEST`):** Medium density (`maxDensity = 165`), humid yellowish-gray spore haze (`PAL16_YELLOW + 8` / `PAL16_GRAY + 9`).
+
+### 11.2 20 Hz Interactive Dispersion Simulation & Dual Isometric Render Passes (`Source/diablo.cpp`, `Source/engine/render/scrollrt.cpp`, `Source/options.h`, `Source/options.cpp`)
+- **20 Hz Interactive Entity Wake & Swirl Advection (`UpdateGroundFogSimulation` & `ResetGroundFogLevel`):**
+  - Hooked `ResetGroundFogLevel()` into `LoadGameLevel()` and `UpdateGroundFogSimulation()` into `GameLogic()` in `Source/diablo.cpp`.
+  - Maintains a per-tile `FogCell` grid (`density`, `velX`, `velY`) that relaxes and regrows organically around the camera while carving directional wakes and tangential swirl velocities when players walk, monsters move/charge/attack, or missiles/explosions fly across tiles.
+- **Two-Pass Isometric Rendering (`DrawDungeon` in `Source/engine/render/scrollrt.cpp`):**
+  - **Pass 1 (`DrawGroundFogTileBase`):** Called right after `DrawCell()`, rendering the bilinearly interpolated, dual-layer scrolling FBM ground fog blanket across walkable `64x32` floor diamonds with smooth wall feathering and local `dLight` attenuation.
+  - **Pass 2 (`DrawGroundFogEntitySubmersion`):** Called immediately after `DrawPlayerHelper()` and `DrawMonsterHelper()`, rendering knee-high (`20 px`) vertically attenuated volumetric fog wisps over the boots and lower legs of players and monsters standing in the fog.
+- **Graphics Settings Option (`Source/options.h`, `Source/options.cpp`):**
+  - Added `OptionEntryBoolean groundFog` (`"Ground Fog"`, default `true`) to `GraphicsOptions` (`Settings -> Graphics -> Ground Fog`).
+

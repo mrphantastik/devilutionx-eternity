@@ -540,6 +540,8 @@ struct GraphicsOptions : OptionCategoryBase {
 	OptionEntryBoolean showFPS;
 	/** @brief Randomize level color palettes (DevilutionXRandomizer). */
 	OptionEntryBoolean randomizePalette;
+	/** @brief Enable 3D isometric ground fog with entity dispersion. */
+	OptionEntryBoolean groundFog;
 };
 
 struct GameplayOptions : OptionCategoryBase {

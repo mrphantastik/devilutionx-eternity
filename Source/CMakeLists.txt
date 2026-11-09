@@ -114,6 +114,7 @@ set(libdevilutionx_SRCS
   engine/render/automap_render.cpp
   engine/render/clx_render.cpp
   engine/render/dun_render.cpp
+  engine/render/ground_fog.cpp
   engine/render/scrollrt.cpp
   engine/render/text_render.cpp
   engine/render/weather.cpp

@@ -1028,6 +1028,7 @@ GraphicsOptions::GraphicsOptions()
 #endif
     , showFPS("Show FPS", OptionEntryFlags::None, N_("Show FPS"), N_("Displays the FPS in the upper left corner of the screen."), false)
     , randomizePalette("Randomize Level Palettes", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes town and dungeon color palettes using DevilutionXRandomizer presets."), true)
+    , groundFog("Ground Fog", OptionEntryFlags::None, N_("Ground Fog"), N_("Enables 3D isometric volumetric ground fog that parts and swirls around moving characters and monsters."), true)
 {
 	resolution.SetValueChangedCallback(ResizeWindow);
 	fullscreen.SetValueChangedCallback(SetFullscreenMode);
@@ -1063,6 +1064,7 @@ std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 		&zoom,
 		&showFPS,
 		&colorCycling,
+		&groundFog,
 		&alternateNestArt,
 		&randomizePalette,
 #if SDL_VERSION_ATLEAST(2, 0, 0)

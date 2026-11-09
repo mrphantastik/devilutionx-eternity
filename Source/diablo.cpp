@@ -35,6 +35,7 @@
 #include "engine/load_cel.hpp"
 #include "engine/load_file.hpp"
 #include "engine/random.hpp"
+#include "engine/render/ground_fog.h"
 #include "engine/render/weather.h"
 #include "engine/sound.h"
 #include "error.h"
@@ -1460,6 +1461,7 @@ void GameLogic()
 	sound_update();
 	CheckTriggers();
 	CheckQuests();
+	UpdateGroundFogSimulation();
 	RedrawViewport();
 	pfile_update(false);
 
@@ -3023,6 +3025,7 @@ void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 		music_mute();
 	}
 
+	ResetGroundFogLevel();
 	CompleteProgress();
 
 	// Recalculate mouse selection of entities after level change/load

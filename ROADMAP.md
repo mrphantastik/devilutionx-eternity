@@ -47,7 +47,11 @@
   - Preserves vanilla Town (`levels\towndata\town.pal`) unconditionally and supports direct loose folder lookup (`paths::BasePath() + relativePath`) in `FindAsset()` (`Source/engine/assets.cpp`)
   - Deterministic per-floor Murmur3 seed hashing (`glSeedTbl[currlevel]`, `currlevel`, `leveltype`) that never perturbs the gameplay `GenerateRnd` LCG
   - Multi-hue quality filter (`IsMultiHuePalette`) across `DevilutionXRandomizer` dungeon `.pal` presets (`l1_1..66.pal`, `l2_1..74.pal`, `l3_1..58.pal`, `l4_1..46.pal`, `l5_1..74.pal`, `l6_1..79.pal`) that automatically skips flat 1-color monochrome presets, plus a split-complementary procedural shift fallback that preserves neutral greyscale stone
-- [ ] **Phase 11 (Upcoming): Dungeon Particle & Atmospheric Effects**
-  - Biome-specific environmental particle layers (drifting ash, cavern embers, and underground mist)
+- [x] **Phase 11: 3D Isometric Volumetric Ground Fog & Interactive Entity Dispersion**
+  - Pure 8-bit LUT-blended 3D isometric ground-hugging fog/smoke (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`) with precomputed seamless `256x256` 3-octave FBM turbulence and zero `GenerateRnd` usage
+  - Biome-specific dungeon presets: Cathedral spectral mist, Catacombs bone-beige mist, Caves sulfurous thermal steam, Hell dark charcoal/soot rising smoke (`isDarkSmoke`), Crypt thick ancient tomb fog (`50%` core blend), and Nest humid spore haze
+  - 20 Hz interactive dispersion simulation (`UpdateGroundFogSimulation`) where moving players, charging/attacking monsters, and missiles carve directional wakes and swirl velocities into `gFogGrid`, plus knee-high entity submersion (`DrawGroundFogEntitySubmersion`) over player/monster boots and lower legs
+  - Toggleable in `Settings -> Graphics -> Ground Fog` (`sgOptions.Graphics.groundFog`, default `ON`)
 - [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**
 - [ ] **Phase 13 (Deferred / Final Phase): Dynamic Lighting Pipeline**
+
