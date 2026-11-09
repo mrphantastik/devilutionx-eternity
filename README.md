@@ -24,18 +24,18 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 
 ---
 
+### Dynamic Weather & Environmental Atmosphere (WIP)
+- **Tristram Rainfall:** Ambient rainfall layer across town.
+- **Interactive Ground Fog**: Volumetric mist simulation that reacts to entity movement and explosions.
+
+---
+
 ### Seamless Dungeon Branches: Hive & Crypt
 *Hellfire's* dungeons are woven directly into the natural labyrinth descent:
 - **The Hive (Levels 17–20):** Accessible via a downward stairway on **Caves Level 12**.
 - **The Crypt (Levels 21–24):** Accessible via a descent discovered on **Hell Level 14**.
 - Both branches utilize pure vanilla Diablo I drop and affix tables.
 - Out-of-place *Hellfire* sprites have been replaced with proper, dark-fantasy D1 counterparts (including Magma Demons, Counselors, Advocates, Drakes, and Blood Knights) while retaining their aggressive projectile and elemental hazard behaviors.
-
----
-
-### Dynamic Weather & Environmental Atmosphere (WIP)
-- **Tristram Rainfall:** Ambient rainfall layer across town.
-- **Interactive Ground Fog**: Volumetric mist simulation that reacts to entity movement and explosions.
 
 ---
 
