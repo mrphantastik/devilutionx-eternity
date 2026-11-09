@@ -307,6 +307,8 @@ void OptionRandomizePaletteChanged()
 {
 	if (!gbRunGame || setlevel)
 		return;
+	if (*sgOptions.Graphics.randomizePalette)
+		AdvancePaletteRerollSalt();
 	LoadRndLvlPal(leveltype);
 	ApplyGamma(logical_palette, orig_palette, 256);
 	SetFadeLevel(256);
@@ -1021,13 +1023,13 @@ GraphicsOptions::GraphicsOptions()
     , zoom("Zoom", OptionEntryFlags::None, N_("Zoom"), N_("Zoom on when enabled."), false)
     , colorCycling("Color Cycling", OptionEntryFlags::None, N_("Color Cycling"), N_("Color cycling effect used for water, lava, and acid animation."), true)
     , alternateNestArt("Alternate nest art", OptionEntryFlags::OnlyHellfire | OptionEntryFlags::CantChangeInGame, N_("Alternate nest art"), N_("The game will use an alternative palette for Hellfire’s nest tileset."), false)
-    , randomizePalette("Randomize Palette", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes town and dungeon color palettes using DevilutionXRandomizer presets."), false)
 #if SDL_VERSION_ATLEAST(2, 0, 0)
     , hardwareCursor("Hardware Cursor", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor"), N_("Use a hardware cursor"), HardwareCursorDefault())
     , hardwareCursorForItems("Hardware Cursor For Items", OptionEntryFlags::CantChangeInGame | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor For Items"), N_("Use a hardware cursor for items."), false)
     , hardwareCursorMaxSize("Hardware Cursor Maximum Size", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor Maximum Size"), N_("Maximum width / height for the hardware cursor. Larger cursors fall back to software."), 128, { 0, 64, 128, 256, 512 })
 #endif
     , showFPS("Show FPS", OptionEntryFlags::None, N_("Show FPS"), N_("Displays the FPS in the upper left corner of the screen."), false)
+    , randomizePalette("Randomize Level Palettes", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes town and dungeon color palettes using DevilutionXRandomizer presets."), true)
 {
 	resolution.SetValueChangedCallback(ResizeWindow);
 	fullscreen.SetValueChangedCallback(SetFullscreenMode);

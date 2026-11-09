@@ -62,11 +62,15 @@ int sgCurrentMenuIdx;
 
 int GetActiveMenuTop()
 {
+	if (sgCurrentMenuIdx > 7)
+		return 83;
 	return sgCurrentMenuIdx > 5 ? GMenuCompactTop : GMenuTop;
 }
 
 int GetActiveMenuItemHeight()
 {
+	if (sgCurrentMenuIdx > 7)
+		return 33;
 	return sgCurrentMenuIdx > 5 ? GMenuCompactItemHeight : GMenuItemHeight;
 }
 
@@ -267,7 +271,7 @@ void gmenu_draw(const Surface &out)
 		}
 		int uiPositionY = GetUIRectangle().position.y;
 		const ClxSprite sprite = (*sgpLogo)[LogoAnim_frame];
-		const int logoY = (sgCurrentMenuIdx > 5 ? 78 : 102) + uiPositionY;
+		const int logoY = (sgCurrentMenuIdx > 7 ? 68 : (sgCurrentMenuIdx > 5 ? 78 : 102)) + uiPositionY;
 		ClxDraw(out, { (gnScreenWidth - sprite.width()) / 2, logoY }, sprite);
 		int y = (GetActiveMenuTop() - 7) + uiPositionY;
 		const int itemHeight = GetActiveMenuItemHeight();

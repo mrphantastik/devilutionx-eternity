@@ -97,6 +97,17 @@ AssetRef FindAsset(const char *filename)
 		return result;
 	}
 
+	// Loose files in the `BasePath()` directory (next to the executable, e.g. `<BasePath>/palette/...`).
+	const std::string &basePathPrefix = paths::BasePath();
+	if (!basePathPrefix.empty()) {
+		char *basePath = relativePath - basePathPrefix.size();
+		std::memcpy(basePath, basePathPrefix.data(), basePathPrefix.size());
+		if (FileExists(basePath)) {
+			*BufCopy(result.path, string_view(basePath, pathEnd - basePath)) = '\0';
+			return result;
+		}
+	}
+
 	// Unpacked MPQ file:
 	char *const unpackedMpqPath = FindUnpackedMpqFile(relativePath);
 	if (unpackedMpqPath != nullptr) {
@@ -135,6 +146,16 @@ AssetRef FindAsset(const char *filename)
 		result.directHandle = OpenOptionalRWops(path);
 		if (result.directHandle != nullptr) {
 			LogVerbose("Loaded MPQ file override: {}", path);
+			return result;
+		}
+	}
+
+	// Loose files in the `BasePath()` directory (next to the executable, e.g. `<BasePath>/palette/...`).
+	if (!paths::BasePath().empty()) {
+		const std::string path = paths::BasePath() + relativePath;
+		result.directHandle = OpenOptionalRWops(path);
+		if (result.directHandle != nullptr) {
+			SDL_ClearError();
 			return result;
 		}
 	}

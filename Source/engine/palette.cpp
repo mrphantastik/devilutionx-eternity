@@ -154,6 +154,8 @@ bool AssetPaletteExists(const char *pszFileName)
 	return ref.ok() && ref.size() >= 768;
 }
 
+uint32_t sgPaletteRerollSalt = 0;
+
 /**
  * @brief Deterministic Murmur3-style hash from the current level's seed and depth
  * so palette selection never perturbs the gameplay RNG (GenerateRnd).
@@ -165,6 +167,7 @@ uint32_t GetLevelPaletteHash(dungeon_type l)
 		h = static_cast<uint32_t>(glSeedTbl[1]);
 	h ^= static_cast<uint32_t>(currlevel) * 0x9E3779B9U;
 	h ^= static_cast<uint32_t>(l) * 0x85EBCA6BU;
+	h ^= sgPaletteRerollSalt * 0xC2B2AE35U;
 	h ^= h >> 16;
 	h *= 0x85EBCA6BU;
 	h ^= h >> 13;
@@ -349,10 +352,10 @@ void LoadRndLvlPal(dungeon_type l)
 			uint32_t count;
 		};
 
-		RndPalInfo info = { "towndata", "town", 5 };
+		RndPalInfo info = { "towndata", "town", 3 };
 		switch (l) {
 		case DTYPE_TOWN:
-			info = { "towndata", "town", 5 };
+			info = { "towndata", "town", 3 };
 			break;
 		case DTYPE_CATHEDRAL:
 			info = { "l1data", "l1", 66 };
@@ -411,6 +414,11 @@ void LoadRndLvlPal(dungeon_type l)
 	LoadPalette(szFileName);
 	if (*sgOptions.Graphics.randomizePalette)
 		ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
+}
+
+void AdvancePaletteRerollSalt()
+{
+	sgPaletteRerollSalt++;
 }
 
 void IncreaseGamma()

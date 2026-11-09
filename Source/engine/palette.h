@@ -55,6 +55,7 @@ void palette_update(int first = 0, int ncolor = 256);
 void palette_init();
 void LoadPalette(const char *pszFileName, bool blend = true);
 void LoadRndLvlPal(dungeon_type l);
+void AdvancePaletteRerollSalt();
 void IncreaseGamma();
 void ApplyGamma(std::array<SDL_Color, 256> &dst, const std::array<SDL_Color, 256> &src, int n);
 void DecreaseGamma();
