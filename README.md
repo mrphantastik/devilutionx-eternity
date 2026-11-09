@@ -4,7 +4,7 @@
 
 # DX:Eternity
 
-Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine, this project brings greater variety, enhanced visuals, and modern acoustic fidelity to vanilla Diablo. Without unnecessary feature bloat, it carefully maintains the raw pace, tone, and itemization of the 1996 original.
+Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine, this project brings greater variety, enhanced visuals and modern acoustic fidelity to vanilla Diablo. Without unnecessary feature bloat, it carefully maintains the raw pace, tone, and itemization of the 1996 original.
 
 ---
 
