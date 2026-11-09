@@ -32,7 +32,7 @@ char *FindUnpackedMpqFile(char *relativePath)
 		path = nullptr;
 		return false;
 	};
-	at(font_data_path) || at(lang_data_path)
+	at(dx_eternity_data_path) || at(font_data_path) || at(lang_data_path)
 	    || (gbIsHellfire && at(hellfire_data_path))
 	    || at(spawn_data_path) || at(diabdat_data_path) || at(hellfire_data_path);
 	return path;
@@ -56,14 +56,16 @@ bool FindMpqFile(const char *filename, MpqArchive **archive, uint32_t *fileNumbe
 {
 	const MpqArchive::FileHash fileHash = MpqArchive::CalculateFileHash(filename);
 	const auto at = [=](std::optional<MpqArchive> &src) -> bool {
-		if (src && src->GetFileNumber(fileHash, *fileNumber)) {
+		if (src && src->GetNumFiles() > 0 && src->GetFileNumber(fileHash, *fileNumber)) {
+			if (src->GetUnpackedFileSize(*fileNumber) == 0)
+				return false;
 			*archive = &(*src);
 			return true;
 		}
 		return false;
 	};
 
-	return at(font_mpq) || at(lang_mpq) || at(devilutionx_mpq)
+	return at(dx_eternity_mpq) || at(font_mpq) || at(lang_mpq) || at(devilutionx_mpq)
 	    || (gbIsHellfire && (at(hfvoice_mpq) || at(hfmusic_mpq) || at(hfbarb_mpq) || at(hfbard_mpq) || at(hfmonk_mpq) || at(hellfire_mpq)))
 	    || at(spawn_mpq) || at(diabdat_mpq)
 	    || at(hfvoice_mpq) || at(hfmusic_mpq) || at(hfbarb_mpq) || at(hfbard_mpq) || at(hfmonk_mpq) || at(hellfire_mpq);

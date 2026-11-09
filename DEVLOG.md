@@ -349,3 +349,31 @@
   - **Loxley's Bend (`UITEM_LOXLEYSBEND`):** Assigned `{ IPL_INVCURS, ITEM_STLSHRTBOW }` (`objcurs.cel` steel short bow graphic `120`) on creation and save load.
 - **File:** `Source/options.cpp` & `Source/gamemenu.cpp`
   - Renamed the HRTF option label to **`Headphone Mode (HRTF)`** in both `Settings -> Audio` and the in-game `ESC -> Options` menu (`Headphone Mode (HRTF): ON/OFF`).
+
+---
+
+## Phase 9: Highest-Priority `dx-eternity.mpq` Custom Asset Override & Hardened MPQ/SDL2 Loading
+
+### 9.1 Pre-Dynamic-Lighting Rollback Verification
+- Verified that all experimental dynamic lighting files and hooks are cleanly rolled back (deferred to the final phase of development):
+  - `Source/utils/display.cpp` is unmodified (no forced `SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl")` in `ReinitializeRenderer()`).
+  - `SoundSample::SetChunkStream()` in `Source/utils/soundsample.cpp` retains the `16 MB` in-memory OpenAL decode threshold (`ref.size() <= 16 * 1024 * 1024`), ensuring large music tracks like `dtowne.wav` (`~31 MB`) stream asynchronously via `Aulib::Stream` rather than synchronously decompressing into RAM on Town entry.
+  - Moved prebuilt third-party Windows binary folders (`libsodium-win32`, `libsodium-win64`) and non-repository files into `/misc/`.
+
+### 9.2 Highest-Priority `dx-eternity.mpq` Custom Asset Archive (`Source/init.h`, `Source/init.cpp`, `Source/engine/assets.cpp`)
+- **File:** `Source/init.h` & `Source/init.cpp`
+  - Declared and defined `dx_eternity_mpq` (and `dx_eternity_data_path` for `UNPACKED_MPQS`), cleaned up in `init_cleanup()`.
+  - Loaded `dx-eternity.mpq` (with uppercase fallback `DX-ETERNITY.MPQ`) in `LoadCoreArchives()` and `LoadGameArchives()` so custom UI, font, audio, monster, item, and level assets are available from initial startup through gameplay.
+- **File:** `Source/engine/assets.cpp`
+  - Placed `at(dx_eternity_mpq)` (and `at(dx_eternity_data_path)`) at the front of the lookup chain in `FindMpqFile()` / `FindUnpackedMpqFile()`, giving `dx-eternity.mpq` highest priority over `font_mpq`, `lang_mpq`, `devilutionx_mpq`, `diabdat_mpq`, and `hellfire_mpq`.
+
+### 9.3 Fix Empty MPQ Underflow, Zero-Byte Entry Fallback, Uninitialized Buffer Reads & `SDL_DYNAMIC_API` Conflict
+- **File:** `Source/mpq/mpq_reader.hpp` & `Source/mpq/mpq_reader.cpp`
+  - Added `MpqArchive::GetNumFiles() const` and `MpqArchive::GetUnpackedFileSize(uint32_t fileNumber)`.
+  - Guarded `GetFileNumber()`, `GetUnpackedFileSize()`, `ReadFile()`, `ReadBlock()`, `GetNumBlocks()`, `OpenBlockOffsetTable()`, `CloseBlockOffsetTable()`, `GetBlockSize()`, and `HasFile()` against empty MPQ archives (`files == 0`) and out-of-range `fileNumber >= files`. This prevents `libmpq`'s `CHECK_FILE_NUM` macro (`file_number > mpq_archive->files - 1`) from underflowing unsigned `0U - 1U` to `4294967295` when `dx-eternity.mpq` is empty.
+  - Updated `MpqArchive::GetFileNumber()` and `FindMpqFile()` (`Source/engine/assets.cpp`) to return `false` if a matched file entry has an uncompressed size of `0` (`GetUnpackedFileSize(fileNumber) == 0`), cleanly falling back to `devilutionx_mpq` and `diabdat_mpq`.
+- **File:** `Source/engine/load_file.hpp` & `Source/engine/assets.hpp`
+  - Updated `LoadFileInMem()` overloads in `Source/engine/load_file.hpp` to reject `size == 0` and verify `handle.read()` succeeds before returning `buf`, ensuring failed reads never pass uninitialized memory to the CLX font or sprite renderers.
+  - Hardened `AssetRef::size()` and `AssetHandle::read()` / `seek()` in `Source/engine/assets.hpp` against null handles and negative `SDL_RWsize` returns.
+- **Windows 64-Bit Build (`misc/dx-eternity.exe`):**
+  - Compiled `misc/dx-eternity.exe` (`6.7 MB`, Release) dynamically linking `SDL2.dll` (matching the existing `SDL2.dll` in the game directory with zero static/dynamic `SDL_RWops` ABI conflict) while statically linking all other libraries (`libOpenAL32.a` with `BSinc24` + HRIR de-coloration, `libsodium.a`, `libwinpthread.a`, `libstdc++.a`, `libgcc.a`, `SDL2_image`, `SDL_audiolib`, `fmt`, `zlib`, `bzip2`, and `libmpq`) directly into the executable.

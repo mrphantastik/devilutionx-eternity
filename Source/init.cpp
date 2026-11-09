@@ -60,6 +60,7 @@ std::optional<std::string> diabdat_data_path;
 std::optional<std::string> hellfire_data_path;
 std::optional<std::string> font_data_path;
 std::optional<std::string> lang_data_path;
+std::optional<std::string> dx_eternity_data_path;
 #else
 std::optional<MpqArchive> spawn_mpq;
 std::optional<MpqArchive> diabdat_mpq;
@@ -72,6 +73,7 @@ std::optional<MpqArchive> hfvoice_mpq;
 std::optional<MpqArchive> devilutionx_mpq;
 std::optional<MpqArchive> lang_mpq;
 std::optional<MpqArchive> font_mpq;
+std::optional<MpqArchive> dx_eternity_mpq;
 #endif
 
 namespace {
@@ -223,12 +225,14 @@ void init_cleanup()
 	}
 
 #ifdef UNPACKED_MPQS
+	dx_eternity_data_path = std::nullopt;
 	lang_data_path = std::nullopt;
 	font_data_path = std::nullopt;
 	hellfire_data_path = std::nullopt;
 	diabdat_data_path = std::nullopt;
 	spawn_data_path = std::nullopt;
 #else
+	dx_eternity_mpq = std::nullopt;
 	spawn_mpq = std::nullopt;
 	diabdat_mpq = std::nullopt;
 	hellfire_mpq = std::nullopt;
@@ -250,8 +254,15 @@ void LoadCoreArchives()
 	auto paths = GetMPQSearchPaths();
 
 #ifdef UNPACKED_MPQS
+	dx_eternity_data_path = FindUnpackedMpqData(paths, "dx-eternity");
+	if (!dx_eternity_data_path)
+		dx_eternity_data_path = FindUnpackedMpqData(paths, "dx_eternity");
 	font_data_path = FindUnpackedMpqData(paths, "fonts");
 #else // !UNPACKED_MPQS
+	dx_eternity_mpq = LoadMPQ(paths, "dx-eternity.mpq");
+	if (!dx_eternity_mpq) {
+		dx_eternity_mpq = LoadMPQ(paths, "DX-ETERNITY.MPQ");
+	}
 #if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__3DS__) && !defined(__SWITCH__)
 	// Load devilutionx.mpq first to get the font file for error messages
 	devilutionx_mpq = LoadMPQ(paths, "devilutionx.mpq");
@@ -319,6 +330,13 @@ void LoadGameArchives()
 		diablo_quit(1);
 	}
 #else // !UNPACKED_MPQS
+	if (!dx_eternity_mpq) {
+		dx_eternity_mpq = LoadMPQ(paths, "dx-eternity.mpq");
+		if (!dx_eternity_mpq) {
+			dx_eternity_mpq = LoadMPQ(paths, "DX-ETERNITY.MPQ");
+		}
+	}
+
 	diabdat_mpq = LoadMPQ(paths, "DIABDAT.MPQ");
 	if (!diabdat_mpq) {
 		// DIABDAT.MPQ is uppercase on the original CD and the GOG version.

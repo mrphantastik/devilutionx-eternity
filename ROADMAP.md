@@ -37,4 +37,12 @@
   - Localized compact, semi-transparent 5-stage isometric puddle splash animations (-35% count, -50% size, +50% transparency) on walkable outdoor ground tiles rendered in `DrawCell` after `mt[0..1]`
   - Full-screen distant lightning palette flashes (`system_palette`, every 30–60s) with multi-strike flicker and speed-of-sound delayed thunder claps (+35% delay: `sfx\misc\thundera.wav` in Light Rain, `sfx\misc\thunderb.wav` in Heavy Rain)
   - Seamless ambient looping playback of `sfx\misc\RainLightLoop.wav` and `sfx\misc\RainHeavyLoop.wav` (cleanly stopped on dungeon entry or quitting to the main menu)
-- [ ] **Phase 9 (Upcoming): Dungeon Particle & Atmospheric Effects**
+- [x] **Phase 9: Highest-Priority `dx-eternity.mpq` Custom Asset Archive & MPQ/SDL2 Hardening**
+  - Highest-priority `dx-eternity.mpq` (`DX-ETERNITY.MPQ` / unpacked `dx-eternity`) loaded in `LoadCoreArchives()` and `LoadGameArchives()` and queried first in `FindMpqFile()` / `FindUnpackedMpqFile()`
+  - Guard `MpqArchive` (`GetFileNumber`, `GetUnpackedFileSize`, `GetNumFiles`, `ReadFile`, `ReadBlock`, `OpenBlockOffsetTable`, `HasFile`) and `FindMpqFile()` against empty MPQ archives (`files == 0`, preventing `libmpq`'s `files - 1` unsigned underflow) and zero-byte file entries (`GetUnpackedFileSize(fileNumber) == 0`), cleanly falling back to `devilutionx.mpq` / `diabdat.mpq`
+  - Verify `handle.read()` in `LoadFileInMem()` (`Source/engine/load_file.hpp`) before returning the buffer so failed reads never pass uninitialized memory to CLX font/sprite renderers
+  - Disable `SDL_DYNAMIC_API` (`SDL_DYNAMIC_API=0`) in `Source/CMakeLists.txt` so static SDL2 builds never load an older `SDL2.dll` from the game directory, and keep `SetChunkStream()` at the 16 MB threshold so `dtowne.wav` (~31 MB) streams asynchronously
+- [ ] **Phase 10 (Upcoming): Dungeon Particle & Atmospheric Effects**
+  - Biome-specific environmental particle layers (drifting ash, cavern embers, and underground mist)
+- [ ] **Phase 11 (Upcoming): Torment Difficulty & Cut Content Restoration**
+- [ ] **Phase 12 (Deferred / Final Phase): Dynamic Lighting Pipeline**
