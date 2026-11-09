@@ -18,8 +18,10 @@
 #include "controls/plrctrls.h"
 #include "discord/discord.h"
 #include "engine/demomode.h"
+#include "engine/palette.h"
 #include "engine/sound_defs.hpp"
 #include "hwcursor.hpp"
+#include "levels/gendung.h"
 #include "options.h"
 #include "platform/locale.hpp"
 #include "qol/monhealthbar.h"
@@ -299,6 +301,15 @@ void OptionShowFPSChanged()
 		EnableFrameCount();
 	else
 		frameflag = false;
+}
+
+void OptionRandomizePaletteChanged()
+{
+	if (!gbRunGame || setlevel)
+		return;
+	LoadRndLvlPal(leveltype);
+	ApplyGamma(logical_palette, orig_palette, 256);
+	SetFadeLevel(256);
 }
 
 void OptionLanguageCodeChanged()
@@ -1010,6 +1021,7 @@ GraphicsOptions::GraphicsOptions()
     , zoom("Zoom", OptionEntryFlags::None, N_("Zoom"), N_("Zoom on when enabled."), false)
     , colorCycling("Color Cycling", OptionEntryFlags::None, N_("Color Cycling"), N_("Color cycling effect used for water, lava, and acid animation."), true)
     , alternateNestArt("Alternate nest art", OptionEntryFlags::OnlyHellfire | OptionEntryFlags::CantChangeInGame, N_("Alternate nest art"), N_("The game will use an alternative palette for Hellfire’s nest tileset."), false)
+    , randomizePalette("Randomize Palette", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes town and dungeon color palettes using DevilutionXRandomizer presets."), false)
 #if SDL_VERSION_ATLEAST(2, 0, 0)
     , hardwareCursor("Hardware Cursor", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor"), N_("Use a hardware cursor"), HardwareCursorDefault())
     , hardwareCursorForItems("Hardware Cursor For Items", OptionEntryFlags::CantChangeInGame | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor For Items"), N_("Use a hardware cursor for items."), false)
@@ -1028,6 +1040,7 @@ GraphicsOptions::GraphicsOptions()
 	frameRateControl.SetValueChangedCallback(ReinitializeRenderer);
 #endif
 	showFPS.SetValueChangedCallback(OptionShowFPSChanged);
+	randomizePalette.SetValueChangedCallback(OptionRandomizePaletteChanged);
 }
 std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 {
@@ -1051,6 +1064,7 @@ std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 		&showFPS,
 		&colorCycling,
 		&alternateNestArt,
+		&randomizePalette,
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 		&hardwareCursor,
 		&hardwareCursorForItems,

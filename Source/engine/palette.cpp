@@ -5,16 +5,19 @@
  */
 #include "engine/palette.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include <fmt/core.h>
 
+#include "engine/assets.hpp"
 #include "engine/backbuffer_state.hpp"
 #include "engine/demomode.h"
 #include "engine/dx.h"
 #include "engine/load_file.hpp"
 #include "engine/random.hpp"
 #include "hwcursor.hpp"
+#include "levels/gendung.h"
 #include "options.h"
 #include "utils/display.h"
 #include "utils/sdl_compat.h"
@@ -142,6 +145,118 @@ void CycleColorsReverse(int from, int to)
 	std::rotate(paletteTransparencyLookup.begin() + from, paletteTransparencyLookup.begin() + to, paletteTransparencyLookup.begin() + to + 1);
 }
 
+/**
+ * @brief Checks if a custom palette asset exists in MPQs or save/data paths.
+ */
+bool AssetPaletteExists(const char *pszFileName)
+{
+	AssetRef ref = FindAsset(pszFileName);
+	return ref.ok() && ref.size() >= 768;
+}
+
+/**
+ * @brief Deterministic Murmur3-style hash from the current level's seed and depth
+ * so palette selection never perturbs the gameplay RNG (GenerateRnd).
+ */
+uint32_t GetLevelPaletteHash(dungeon_type l)
+{
+	uint32_t h = (currlevel < NUMLEVELS ? static_cast<uint32_t>(glSeedTbl[currlevel]) : 0U);
+	if (h == 0 && NUMLEVELS > 1)
+		h = static_cast<uint32_t>(glSeedTbl[1]);
+	h ^= static_cast<uint32_t>(currlevel) * 0x9E3779B9U;
+	h ^= static_cast<uint32_t>(l) * 0x85EBCA6BU;
+	h ^= h >> 16;
+	h *= 0x85EBCA6BU;
+	h ^= h >> 13;
+	h *= 0xC2B2AE35U;
+	h ^= h >> 16;
+	return h;
+}
+
+/**
+ * @brief Fallback procedural hue/saturation/contrast shift on level-specific
+ * palette entries (indices 1..127) when external DevilutionXRandomizer .pal
+ * files are not present, preserving global UI/item/monster indices 0 and 128..255.
+ */
+void ApplyProceduralPaletteShift(uint32_t hash)
+{
+	// Derive hue rotation (in degrees, avoiding near-0 no-op shifts) and saturation scale
+	const float hueShiftDeg = 25.0F + static_cast<float>(hash % 310U);
+	const float satScale = 0.80F + static_cast<float>((hash >> 9) % 55U) * 0.01F; // 0.80 .. 1.34
+
+	for (int i = 1; i < 128; i++) {
+		float r = orig_palette[i].r / 255.0F;
+		float g = orig_palette[i].g / 255.0F;
+		float b = orig_palette[i].b / 255.0F;
+
+		float cmax = std::max({ r, g, b });
+		float cmin = std::min({ r, g, b });
+		float delta = cmax - cmin;
+
+		float h = 0.0F;
+		if (delta > 0.0001F) {
+			if (cmax == r)
+				h = 60.0F * std::fmod(((g - b) / delta), 6.0F);
+			else if (cmax == g)
+				h = 60.0F * (((b - r) / delta) + 2.0F);
+			else
+				h = 60.0F * (((r - g) / delta) + 4.0F);
+			if (h < 0.0F)
+				h += 360.0F;
+		}
+		float s = (cmax <= 0.0001F) ? 0.0F : (delta / cmax);
+		float v = cmax;
+
+		// If the base tile color is nearly pure greyscale (e.g. Cathedral/Crypt stone),
+		// inject a subtle atmospheric tint so the randomized palette is still distinct.
+		if (s < 0.12F && v > 0.05F) {
+			s = std::min(1.0F, s + 0.18F);
+		}
+
+		h = std::fmod(h + hueShiftDeg, 360.0F);
+		s = clamp(s * satScale, 0.0F, 1.0F);
+
+		float c = v * s;
+		float x = c * (1.0F - std::fabs(std::fmod(h / 60.0F, 2.0F) - 1.0F));
+		float m = v - c;
+
+		float rp = 0.0F;
+		float gp = 0.0F;
+		float bp = 0.0F;
+		if (h < 60.0F) {
+			rp = c;
+			gp = x;
+		} else if (h < 120.0F) {
+			rp = x;
+			gp = c;
+		} else if (h < 180.0F) {
+			gp = c;
+			bp = x;
+		} else if (h < 240.0F) {
+			gp = x;
+			bp = c;
+		} else if (h < 300.0F) {
+			rp = x;
+			bp = c;
+		} else {
+			rp = c;
+			bp = x;
+		}
+
+		orig_palette[i].r = static_cast<Uint8>(clamp(static_cast<int>((rp + m) * 255.0F + 0.5F), 0, 255));
+		orig_palette[i].g = static_cast<Uint8>(clamp(static_cast<int>((gp + m) * 255.0F + 0.5F), 0, 255));
+		orig_palette[i].b = static_cast<Uint8>(clamp(static_cast<int>((bp + m) * 255.0F + 0.5F), 0, 255));
+	}
+
+	if (leveltype == DTYPE_CAVES || leveltype == DTYPE_CRYPT) {
+		GenerateBlendedLookupTable(orig_palette, 1, 31);
+	} else if (leveltype == DTYPE_NEST) {
+		GenerateBlendedLookupTable(orig_palette, 1, 15);
+	} else {
+		GenerateBlendedLookupTable(orig_palette, -1, -1);
+	}
+}
+
 } // namespace
 
 void palette_update(int first, int ncolor)
@@ -217,14 +332,70 @@ void LoadRndLvlPal(dungeon_type l)
 	if (HeadlessMode)
 		return;
 
+	// Preserve exact vanilla GenerateRnd(4) call count for non-town levels
+	// so dungeon generation seeds and multiplayer sync remain 100% identical.
+	int rv = 1;
+	if (l != DTYPE_TOWN) {
+		rv = GenerateRnd(4) + 1;
+	}
+
+	if (*sgOptions.Graphics.randomizePalette) {
+		const uint32_t hash = GetLevelPaletteHash(l);
+		char szRndFileName[64];
+
+		struct RndPalInfo {
+			const char *folder;
+			const char *prefix;
+			uint32_t count;
+		};
+
+		RndPalInfo info = { "towndata", "town", 5 };
+		switch (l) {
+		case DTYPE_TOWN:
+			info = { "towndata", "town", 5 };
+			break;
+		case DTYPE_CATHEDRAL:
+			info = { "l1data", "l1", 66 };
+			break;
+		case DTYPE_CATACOMBS:
+			info = { "l2data", "l2", 74 };
+			break;
+		case DTYPE_CAVES:
+			info = { "l3data", "l3", 58 };
+			break;
+		case DTYPE_HELL:
+			info = { "l4data", "l4", 46 };
+			break;
+		case DTYPE_NEST:
+			info = { "l6data", "l6", 79 };
+			break;
+		case DTYPE_CRYPT:
+			info = { "l5data", "l5", 74 };
+			break;
+		default:
+			break;
+		}
+
+		const uint32_t rndIdx = (hash % info.count) + 1;
+		*fmt::format_to(szRndFileName, R"(palette\{0}\{1}_{2}.pal)", info.folder, info.prefix, rndIdx) = '\0';
+
+		if (AssetPaletteExists(szRndFileName)) {
+			LoadPalette(szRndFileName);
+			return;
+		}
+	}
+
 	if (l == DTYPE_TOWN) {
 		LoadPalette("levels\\towndata\\town.pal");
+		if (*sgOptions.Graphics.randomizePalette)
+			ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
 		return;
 	}
 
-	int rv = GenerateRnd(4) + 1;
 	if (l == DTYPE_CRYPT) {
 		LoadPalette("nlevels\\l5data\\l5base.pal");
+		if (*sgOptions.Graphics.randomizePalette)
+			ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
 		return;
 	}
 
@@ -238,6 +409,8 @@ void LoadRndLvlPal(dungeon_type l)
 		*fmt::format_to(szFileName, R"(levels\l{0}data\l{0}_{1}.pal)", static_cast<int>(l), rv) = '\0';
 	}
 	LoadPalette(szFileName);
+	if (*sgOptions.Graphics.randomizePalette)
+		ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
 }
 
 void IncreaseGamma()

@@ -42,7 +42,11 @@
   - Guard `MpqArchive` (`GetFileNumber`, `GetUnpackedFileSize`, `GetNumFiles`, `ReadFile`, `ReadBlock`, `OpenBlockOffsetTable`, `HasFile`) and `FindMpqFile()` against empty MPQ archives (`files == 0`, preventing `libmpq`'s `files - 1` unsigned underflow) and zero-byte file entries (`GetUnpackedFileSize(fileNumber) == 0`), cleanly falling back to `devilutionx.mpq` / `diabdat.mpq`
   - Verify `handle.read()` in `LoadFileInMem()` (`Source/engine/load_file.hpp`) before returning the buffer so failed reads never pass uninitialized memory to CLX font/sprite renderers
   - Disable `SDL_DYNAMIC_API` (`SDL_DYNAMIC_API=0`) in `Source/CMakeLists.txt` so static SDL2 builds never load an older `SDL2.dll` from the game directory, and keep `SetChunkStream()` at the 16 MB threshold so `dtowne.wav` (~31 MB) streams asynchronously
-- [ ] **Phase 10 (Upcoming): Dungeon Particle & Atmospheric Effects**
+- [x] **Phase 10: Level Palette Randomizer (`DevilutionXRandomizer` Integration)**
+  - Native `Randomize Level Palettes` toggle in `Settings -> Graphics` (`[Graphics] Randomize Palette` in `diablo.ini`) with instant live in-game application/restoration on the active level
+  - Deterministic per-floor Murmur3 seed hashing (`glSeedTbl[currlevel]`, `currlevel`, `leveltype`) that never perturbs the gameplay `GenerateRnd` LCG
+  - Native support for all 402 `DevilutionXRandomizer` `.pal` presets (`palette\towndata\town_1..5.pal`, `l1_1..66.pal`, `l2_1..74.pal`, `l3_1..58.pal`, `l4_1..46.pal`, `l5_1..74.pal`, `l6_1..79.pal`) loaded from `dx-eternity.mpq` or the data folder, plus a built-in procedural HSV shift fallback on level palette indices `1..127`
+- [ ] **Phase 11 (Upcoming): Dungeon Particle & Atmospheric Effects**
   - Biome-specific environmental particle layers (drifting ash, cavern embers, and underground mist)
-- [ ] **Phase 11 (Upcoming): Torment Difficulty & Cut Content Restoration**
-- [ ] **Phase 12 (Deferred / Final Phase): Dynamic Lighting Pipeline**
+- [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**
+- [ ] **Phase 13 (Deferred / Final Phase): Dynamic Lighting Pipeline**

@@ -528,6 +528,8 @@ struct GraphicsOptions : OptionCategoryBase {
 	OptionEntryBoolean colorCycling;
 	/** @brief Use alternate nest palette. */
 	OptionEntryBoolean alternateNestArt;
+	/** @brief Randomize level color palettes (DevilutionXRandomizer). */
+	OptionEntryBoolean randomizePalette;
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 	/** @brief Use a hardware cursor (SDL2 only). */
 	OptionEntryBoolean hardwareCursor;

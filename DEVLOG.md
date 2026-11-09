@@ -379,3 +379,20 @@
   - Hardened `AssetRef::size()` and `AssetHandle::read()` / `seek()` in `Source/engine/assets.hpp` against null handles and negative `SDL_RWsize` returns.
 - **Windows 64-Bit Build (`misc/dx-eternity.exe`):**
   - Compiled `misc/dx-eternity.exe` (`6.7 MB`, Release) dynamically linking `SDL2.dll` (matching the existing `SDL2.dll` in the game directory with zero static/dynamic `SDL_RWops` ABI conflict) while statically linking all other libraries (`libOpenAL32.a` with `BSinc24` + HRIR de-coloration, `libsodium.a`, `libwinpthread.a`, `libstdc++.a`, `libgcc.a`, `SDL2_image`, `SDL_audiolib`, `fmt`, `zlib`, `bzip2`, and `libmpq`) directly into the executable.
+
+---
+
+## Phase 10: Level Palette Randomizer (`DevilutionXRandomizer` Integration in Graphics Options)
+
+### 10.1 Graphics Option & Live In-Game Toggle (`Source/options.h`, `Source/options.cpp`)
+- **File:** `Source/options.h` & `Source/options.cpp`
+  - Added `OptionEntryBoolean randomizePalette` (`"Randomize Palette"`, label `"Randomize Level Palettes"`, default `false`) to `GraphicsOptions` (`Settings -> Graphics`, persisted in `diablo.ini` under `[Graphics] Randomize Palette`).
+  - Registered `OptionRandomizePaletteChanged()` value-changed callback (`if (!gbRunGame || setlevel) return; LoadRndLvlPal(leveltype); ApplyGamma(logical_palette, orig_palette, 256); SetFadeLevel(256);`) so toggling `Randomize Level Palettes` mid-game immediately reloads or restores the current level's palette and rebuilds the 50% transparency lookup table (`paletteTransparencyLookup`).
+
+### 10.2 Deterministic Seed Hashing, `DevilutionXRandomizer` `.pal` Loader & Procedural HSV Fallback (`Source/engine/palette.cpp`)
+- **File:** `Source/engine/palette.cpp`
+  - **100% Deterministic Gameplay RNG Preservation:** Preserved the exact single `GenerateRnd(4) + 1` call for `l != DTYPE_TOWN` in `LoadRndLvlPal(dungeon_type l)` so dungeon layout seeds, monster/item spawns, and multiplayer synchronization are completely unaffected.
+  - **Deterministic Per-Floor Murmur3 Seed Hash (`GetLevelPaletteHash`):** Derives a deterministic hash from `glSeedTbl[currlevel]`, `currlevel`, and `dungeon_type l` so each floor maintains a consistent palette when ascending/descending stairs within a session while randomizing across floors and new games.
+  - **`DevilutionXRandomizer` Custom `.pal` Asset Lookup (`AssetPaletteExists`):** Queries `palette\{folder}\{prefix}_{idx}.pal` across all 402 `DevilutionXRandomizer` presets (`towndata\town_1..5.pal`, `l1data\l1_1..66.pal`, `l2data\l2_1..74.pal`, `l3data\l3_1..58.pal`, `l4data\l4_1..46.pal`, `l5data\l5_1..74.pal`, `l6data\l6_1..79.pal`) via `FindAsset()` (`dx-eternity.mpq` or `palette/` directory).
+  - **Zero-Dependency Procedural HSV Fallback (`ApplyProceduralPaletteShift`):** If the external `palette\*.pal` files are not present in `dx-eternity.mpq` or the data directory, loads the vanilla level palette and applies a deterministic HSV hue rotation (`25..334 deg`), saturation scale (`0.80..1.34`), and subtle greyscale stone tint strictly across level-specific palette indices `1..127` (preserving index `0` transparency and indices `128..255` for UI, items, player, and monsters) before regenerating `paletteTransparencyLookup`.
+
