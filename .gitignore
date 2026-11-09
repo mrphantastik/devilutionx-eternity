@@ -1,1 +1,2 @@
-misc/
+# Note: Keep misc/ un-ignored here in AI Studio so misc/dx-eternity.exe syncs to the File Explorer
+# misc/
