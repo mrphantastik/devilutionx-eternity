@@ -252,8 +252,8 @@ else()
 endif()
 file(GENERATE OUTPUT ${CONFIG_PATH} CONTENT
 "#pragma once
-#define PROJECT_NAME \"${PROJECT_NAME}\"
-#define PROJECT_VERSION \"${PROJECT_VERSION_WITH_SUFFIX}\"
+#define PROJECT_NAME \"DevilutionX: Eternity\"
+#define PROJECT_VERSION \"Beta v0.7d\"
 #define PROJECT_VERSION_MAJOR ${PROJECT_VERSION_MAJOR}
 #define PROJECT_VERSION_MINOR ${PROJECT_VERSION_MINOR}
 #define PROJECT_VERSION_PATCH ${PROJECT_VERSION_PATCH}
@@ -291,6 +291,10 @@ endif()
 if(NOT NOSOUND)
   find_package(OpenAL REQUIRED)
   target_link_libraries(libdevilutionx PUBLIC SDL_audiolib::SDL_audiolib OpenAL::OpenAL winmm ole32 uuid)
+endif()
+
+if(MINGW)
+  target_link_libraries(libdevilutionx PUBLIC -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
 endif()
 
 if(NOT NONET AND NOT DISABLE_ZERO_TIER)

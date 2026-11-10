@@ -451,4 +451,14 @@
   - `CarveSingleTileEntityWake()` strictly modifies **only the single occupied tile `(tile.x, tile.y)`** of each player, monster, or missile, applying a soft interior diamond bell curve (`centerWeight`) in `SampleTileFogState()` so adjacent tiles are never cleared.
   - Replaced the `48x20` rectangular entity submersion box with a tight `28x16` (`RadiusX = 14, RadiusY = 8`) radially attenuated ellipse over player/monster boots (`DrawGroundFogEntitySubmersion`), eliminating visible rectangular fog patches around sprites.
 
+### 11.3 Application Branding (`DevilutionX: Eternity`), Main Menu Version (`DX-Eternity Beta v0.7d`) & Discord Rich Presence (`Source/diablo.cpp`, `Source/CMakeLists.txt`, `Source/discord/discord.cpp`)
+- **Main Menu Bottom-Left Version String (`Source/diablo.cpp`):**
+  - Updated `gszProductName` (`"DX-Eternity Beta v0.7d"`), `gszVersionNumber` (`"Beta v0.7d"`), and `SetApplicationVersions()` so `UiMainMenuDialog(gszProductName, ...)` renders `DX-Eternity Beta v0.7d` in the bottom-left corner of the Main Menu.
+- **Application & Window Title (`Source/CMakeLists.txt`):**
+  - Updated the generated `config.h` block in `Source/CMakeLists.txt` to `#define PROJECT_NAME "DevilutionX: Eternity"` and `#define PROJECT_VERSION "Beta v0.7d"`, updating the SDL2 window title (`SpawnWindow(PROJECT_NAME)`) and dialog boxes without altering user save/config directory paths (`"diasurgical"` / `"devilution"` in `Source/utils/paths.cpp`).
+- **Discord Rich Presence (`-DDISCORD_INTEGRATION=ON`, `Source/discord/discord.cpp`):**
+  - Enabled `-DDISCORD_INTEGRATION=ON` in the MinGW-w64 CMake build (linking against `discord_game_sdk.dll`).
+  - Updated `UpdateGame()` and `UpdateMenu()` in `Source/discord/discord.cpp` to set `activity.SetName("DevilutionX: Eternity")`, `activity.SetApplicationId(DiscordDevilutionxAppId)`, `activity.SetDetails("DevilutionX: Eternity")` in menus, and `gszProductName` (`"DX-Eternity Beta v0.7d"`) as the icon hover tooltip text.
+
+
 

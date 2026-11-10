@@ -118,7 +118,7 @@ bool gbBarbarian;
 bool HeadlessMode = false;
 clicktype sgbMouseDown;
 uint16_t gnTickDelay = 50;
-char gszProductName[64] = "DevilutionX vUnknown";
+char gszProductName[64] = "DX-Eternity Beta v0.7d";
 
 #ifdef _DEBUG
 bool DebugDisableNetworkTimeout = false;
@@ -143,7 +143,7 @@ extern void plrctrls_after_game_logic();
 
 namespace {
 
-char gszVersionNumber[64] = "internal version unknown";
+char gszVersionNumber[64] = "Beta v0.7d";
 
 bool gbGameLoopStartup;
 bool forceSpawn;
@@ -1140,8 +1140,8 @@ void DiabloInitScreen()
 
 void SetApplicationVersions()
 {
-	*BufCopy(gszProductName, PROJECT_NAME, " v", PROJECT_VERSION) = '\0';
-	*BufCopy(gszVersionNumber, "version ", PROJECT_VERSION) = '\0';
+	*BufCopy(gszProductName, "DX-Eternity Beta v0.7d") = '\0';
+	*BufCopy(gszVersionNumber, "Beta v0.7d") = '\0';
 }
 
 void CheckArchivesUpToDate()

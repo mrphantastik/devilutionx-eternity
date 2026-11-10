@@ -53,7 +53,9 @@
   - Per-floor deterministic `spawnChancePercent` (`GetFloorFogSeedHash`, defaulted to `100%` for testing) and 6 visually distinct biome presets (Cathedral cold spectral mist, Catacombs dusty bone-beige mist, Caves warm orange/beige volcanic steam, Hell dark soot & ember-lit infernal smoke, Crypt heavy 50%-blend ectoplasmic tomb fog, and Nest toxic yellow-orange spore miasma), including rising steam/smoke/spores over flat lava/acid/water pools (`IsFogPassableTile`)
   - Single-tile entity & missile wake dispersion (`CarveSingleTileEntityWake`) strictly localized to each entity's exact occupied tile `(tile.x, tile.y)`, paired with a soft `28x16` radially attenuated elliptical boot submersion pass (`DrawGroundFogEntitySubmersion`)
   - Toggleable in `Settings -> Graphics -> Ground Fog` (`sgOptions.Graphics.groundFog`, default `ON`)
+  - Application & Window Title (`DevilutionX: Eternity`), Main Menu version string (`DX-Eternity Beta v0.7d`), and Discord Rich Presence (`-DDISCORD_INTEGRATION=ON`, `discord_game_sdk.dll`)
 - [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**
 - [ ] **Phase 13 (Deferred / Final Phase): Dynamic Lighting Pipeline**
+
 
 

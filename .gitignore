@@ -1,8 +1,20 @@
-# Note: Keep misc/ un-ignored here in AI Studio so misc/dx-eternity.exe syncs to the File Explorer
-# misc/
+# Build & dependency cache
+.deps/
 SDL2-devel-2.32.0-mingw.tar.gz
 libsodium-1.0.20-mingw.tar.gz
-public/
 libsodium-win64/
 libsodium-win32/
 SDL2-2.32.0/
+*.tar.gz
+
+# AI Studio environment / Node files (exclude from GitHub)
+node_modules/
+package.json
+package-lock.json
+bun.lock
+public/
+.env*
+
+# Note: Keep misc/ commented out while downloading misc/dx-eternity.exe from AI Studio's File Explorer
+# (uncomment misc/ right before pushing to GitHub if you don't want the .exe in the repo)
+# misc/
