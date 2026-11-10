@@ -25,7 +25,6 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 <img src="assets/ss-caves.png" width="24%" alt="Caves">
 <img src="assets/ss-crypt.png" width="24%" alt="Crypt">
 <img src="assets/ss-hell.png" width="24%" alt="Hell">
-<img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain">
 </p>
 
 ---
@@ -34,6 +33,7 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 - **Tristram Rainfall:** Ambient rainfall layer across town.
 - **Interactive Ground Fog**: Volumetric mist that reacts to  movement.
 
+<img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain">
 ---
 
 ### Seamless Dungeon Branches: Hive & Crypt
