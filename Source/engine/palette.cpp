@@ -251,13 +251,74 @@ uint32_t GetLevelPaletteHash(dungeon_type l)
  * are not present. Neutral greyscale stone (s < 0.10) is left untouched so levels never
  * turn into a flat 1-color monochrome wash.
  */
+/**
+ * @brief Applies one of 4 deterministic lava color variants to Caves animated lava
+ * palette indices (1..31) while preserving the per-index brightness wave so
+ * CycleColors(1, 31) animates flowing lava ripples across all 4 variants:
+ *   Variant 0: Classic Molten Magma (Orange-Amber)
+ *   Variant 1: Sulfuric Brimstone (Golden-Yellow)
+ *   Variant 2: Poison / Toxic Acid-Lava (Venomous Green)
+ *   Variant 3: Subterranean Phosphene (Bioluminescent Cyan-Teal, no red)
+ */
+void ApplyCavesLavaVariant(uint32_t hash)
+{
+	const uint32_t variant = (hash >> 4) & 3U;
+
+	for (int i = 1; i <= 31; i++) {
+		const float r0 = orig_palette[i].r / 255.0F;
+		const float g0 = orig_palette[i].g / 255.0F;
+		const float b0 = orig_palette[i].b / 255.0F;
+		const float cmax = std::max({ r0, g0, b0 });
+		const float luma = 0.299F * r0 + 0.587F * g0 + 0.114F * b0;
+		const float t = clamp(cmax * 0.65F + luma * 0.35F, 0.04F, 1.0F);
+		const float t2 = t * t;
+
+		float rp = r0;
+		float gp = g0;
+		float bp = b0;
+
+		switch (variant) {
+		case 0: // Classic Molten Magma (Orange-Amber)
+			rp = clamp(t * 1.25F, 0.0F, 1.0F);
+			gp = clamp(t2 * 0.82F + t * 0.12F, 0.0F, 1.0F);
+			bp = clamp(t2 * t * 0.30F, 0.0F, 1.0F);
+			break;
+		case 1: // Sulfuric Brimstone (Golden-Yellow)
+			rp = clamp(t * 1.18F, 0.0F, 1.0F);
+			gp = clamp(t * 0.96F + t2 * 0.12F, 0.0F, 1.0F);
+			bp = clamp(t2 * 0.26F, 0.0F, 1.0F);
+			break;
+		case 2: // Poison / Toxic Acid-Lava (Venomous Green)
+			rp = clamp(t2 * 0.50F + t * 0.08F, 0.0F, 1.0F);
+			gp = clamp(t * 1.22F, 0.0F, 1.0F);
+			bp = clamp(t2 * 0.24F + t * 0.05F, 0.0F, 1.0F);
+			break;
+		case 3: // Subterranean Phosphene (Bioluminescent Cyan-Teal)
+		default:
+			rp = clamp(t2 * t * 0.26F, 0.0F, 1.0F);
+			gp = clamp(t * 1.04F + t2 * 0.10F, 0.0F, 1.0F);
+			bp = clamp(t * 1.22F, 0.0F, 1.0F);
+			break;
+		}
+
+		orig_palette[i].r = static_cast<Uint8>(clamp(static_cast<int>(rp * 255.0F + 0.5F), 0, 255));
+		orig_palette[i].g = static_cast<Uint8>(clamp(static_cast<int>(gp * 255.0F + 0.5F), 0, 255));
+		orig_palette[i].b = static_cast<Uint8>(clamp(static_cast<int>(bp * 255.0F + 0.5F), 0, 255));
+	}
+}
+
 void ApplyProceduralPaletteShift(uint32_t hash)
 {
 	const float hueShiftPrimary = 35.0F + static_cast<float>(hash % 290U);
 	const float hueShiftSecondary = std::fmod(hueShiftPrimary + 115.0F, 360.0F);
 	const float satScale = 0.85F + static_cast<float>((hash >> 9) % 35U) * 0.01F; // 0.85 .. 1.19
 
-	for (int i = 1; i < 128; i++) {
+	if (leveltype == DTYPE_CAVES) {
+		ApplyCavesLavaVariant(hash);
+	}
+
+	const int startIdx = (leveltype == DTYPE_CAVES) ? 32 : 1;
+	for (int i = startIdx; i < 128; i++) {
 		float r = orig_palette[i].r / 255.0F;
 		float g = orig_palette[i].g / 255.0F;
 		float b = orig_palette[i].b / 255.0F;
@@ -471,7 +532,10 @@ void LoadRndLvlPal(dungeon_type l)
 				orig_palette[i].a = SDL_ALPHA_OPAQUE;
 #endif
 			}
-			if (leveltype == DTYPE_CAVES || leveltype == DTYPE_CRYPT) {
+			if (leveltype == DTYPE_CAVES) {
+				ApplyCavesLavaVariant(hash);
+				GenerateBlendedLookupTable(orig_palette, 1, 31);
+			} else if (leveltype == DTYPE_CRYPT) {
 				GenerateBlendedLookupTable(orig_palette, 1, 31);
 			} else if (leveltype == DTYPE_NEST) {
 				GenerateBlendedLookupTable(orig_palette, 1, 15);

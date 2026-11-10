@@ -462,6 +462,46 @@
   - Enabled `-DDISCORD_INTEGRATION=ON` in the MinGW-w64 CMake build (linking against `discord_game_sdk.dll`).
   - Updated `UpdateMenu()` and `UpdateGame()` in `Source/discord/discord.cpp` so both keep `activity.SetName("DevilutionX: Eternity")` and `activity.SetDetails("DevilutionX: Eternity")` permanently visible, while `UpdateGame()` combines location, difficulty, level, and class into `activity.SetState(...)` (`"{Location} ({Difficulty}) - Level {N} {Class}"`) and sets `gszProductName` (`"DX-Eternity Beta v0.7d"`) as the icon hover tooltip text.
 
+### 11.4 Ground Fog Overhaul v2: Hell Black Smoke Fix, 3-Altitude Volumetric Ray-Slicing + Drop-Shadows, 60+ Hz Sub-Texel Bilinear Drift, ~1.5px Wall Margin & Continuous Half-Tile Wake (`Source/engine/render/ground_fog.cpp`)
+- **Hell Black Smoke Fix (`PAL16_GRAY + 15` = System White `255` Bug Fixed):**
+  - In Diablo 1's 256-color palette (`Source/lighting.cpp:325`), index `255` (`PAL16_GRAY + 15`) is reserved for system Pure White `(255, 255, 255)`, whereas index `0` is Pure Black `(0, 0, 0)` and `PAL16_GRAY + 14` (`254`) is the darkest charcoal ramp color.
+  - Updated `DTYPE_HELL` in `GetLevelFogConfig()` to use `troughShade = 0` (`Pure Black`), `coreShade = PAL16_GRAY + 14` (`254`, darkest charcoal soot), and `crestShade = PAL16_GRAY + 12` (`252`, dark ash-charcoal) with `isDarkSmoke = true` on all three shades, eliminating bright white/orange stripe artifacts in Hell smoke.
+- **3-Altitude Volumetric Ray-Slicing + Overhead Drop-Shadows + `2x2` Bayer Dithering:**
+  - Replaced `std::fabs` ridge-fold creases in `EnsureFogNoiseInitialized()` with quintic C2-continuous (`t^3 * (t * (t * 6 - 15) + 10)`) 4-octave cumulus domes (`s = 128, 64, 32, 16`) with smooth rounded tops (`norm * (2.0 - norm)`).
+  - Each screen pixel `(sx, sy)` is written at most once and ray-marched across 3 isometric altitudes:
+    - **Altitude 0 (`z = 0 px`, `0.81x` drift):** Ground-hugging mist (`hBase`).
+    - **Altitude 1 (`z = +3.5 px`, `1.00x` drift):** Mid cloud body on decorrelated slice `(+97, +151)` (`hMid`).
+    - **Altitude 2 (`z = +7.0 px`, `1.19x` wind shear):** Upper 3D billow domes on decorrelated slice `(+193, +53)` (`hTop`).
+  - Samples overhead cloud density `hOverhead` (`z = +12.0 px`) to cast dark underside drop-shadows (`hOverhead > hTop + 26`) onto lower cloud layers and floor, and applies a `2x2` Bayer dither matrix (`Bayer2x2[sy & 1][sx & 1]`) across blend thresholds (`Blend50`, `Blend37`, `Blend31`, `Blend25`, `Blend19`, `Blend12`, `Blend6`) to eliminate contour banding.
+- **60+ Hz Sub-Texel Bilinear Drift (`SampleLutBilinear`):**
+  - Replaced integer-stepped `ticks / driftDiv` LUT indexing with 24.8 fixed-point sub-texel coordinates (`driftXFixed1 = (ticks * 256) / cfg.driftDivX`) and 2D bilinear interpolation (`SampleLutBilinear`), eliminating 3–5 Hz quantization stutter.
+- **~1.5px Wall Margin + Smooth 6-Step Fade-Out to `6.25%` (`Blend6`):**
+  - Decoupled cloud shape evaluation (`cloudIntensity >= cfg.intensityCutoff`) from `wallFade` and computed exact fractional 8-direction wall distance (`minDist` in `0..255` across N/S/W/E edges and NW/NE/SW/SE corners) in `SampleTileFogState()`.
+  - Leaves a tight `~1.5px` gap (`minDist <= 12 -> wallFade = 0`) next to solid walls and ramps opacity smoothly over the next ~14 pixels through 6 blending tiers (`Blend37 -> Blend31 -> Blend25 -> Blend19 -> Blend12 -> Blend6 -> 0%`) without carving rigid V-trough corridors or abrupt cutoffs.
+- **Continuous `+0.5 Tile on Each Side` Entity & Missile Wake (`gFogHalfGrid`):**
+  - Replaced the single-tile `gFogGrid` with a continuous half-tile resolution grid (`gFogHalfGrid[MAXDUNX * 2 + 3][MAXDUNY * 2 + 3]`) bilinearly interpolated across every tile's `(u256, v256)` coordinates.
+  - `CarveContinuousEntityWake()` converts each player's/monster's/missile's sub-tile walking/flight offset into continuous half-tile space and carves a radial wake of radius `2.0` half-tiles (`1.0` full tile in every direction = `0.5` center + `0.5` on each side), smoothly pushing fog outward across tile boundaries.
+- **+10% Transparency on Denser Layers:**
+  - Added `Blend31` (`31.25%`) and `Blend6` (`6.25%`) and shifted dense tiers down by `+10%` transparency (`Blend37 -> Blend31 -> Blend25 -> Blend19 -> Blend12 -> Blend6`, with `Blend50` reserved only for the very peak of Crypt heavy tomb fog).
+
+### 11.5 Batch 2: Caves Deterministic Lava Color Variants & 3D Boiling Lava Bubbles (`Source/engine/palette.cpp`, `Source/effects.h`, `Source/effects.cpp`, `Source/engine/render/ground_fog.cpp`)
+- **4 Deterministic Caves Lava Color Variants (`ApplyCavesLavaVariant` in `Source/engine/palette.cpp`):**
+  - In `DTYPE_CAVES`, palette indices `1..31` are the animated lava indices cycled every 50 ms by `palette_update_caves()` (`CycleColors(1, 31)`).
+  - Hooked `ApplyCavesLavaVariant(hash)` into both `LoadRndLvlPal()` and `ApplyProceduralPaletteShift()` when `*sgOptions.Graphics.randomizePalette` is enabled on `DTYPE_CAVES`, selecting one of 4 deterministic lava variants from the floor's palette hash (`(hash >> 11) & 3`) while preserving each index's brightness wave for `CycleColors(1, 31)`:
+    - **Variant 0 — Classic Molten Magma (Orange-Amber):** Deep crimson crust -> fiery orange -> incandescent golden-white core.
+    - **Variant 1 — Sulfuric Brimstone Lava (Golden-Yellow):** Dark bronze crust -> intense sulfuric yellow -> blinding lemon-white core.
+    - **Variant 2 — Poison / Toxic Acid-Lava (Venomous Green):** Dark forest-sludge crust -> neon toxic emerald -> radioactive chartreuse-white core.
+    - **Variant 3 — Subterranean Phosphene Lava (Bioluminescent Cyan-Teal):** Deep abyssal teal crust -> electric cyan -> glowing ice-cyan core.
+- **Caves 3D Boiling Lava Bubbles & Positional `LS_LAVABUBBLES` SFX (`Source/effects.h`, `Source/effects.cpp`, `Source/engine/render/ground_fog.cpp`):**
+  - Registered `LS_LAVABUBBLES` (`"sfx\\misc\\LavaBubbles.wav"`) in `enum _sfx_id` and `sgSFX[]`.
+  - Detects Caves lava tiles (`IsCavesLavaTile`: bright animated magma tiles plus `DPieceMicros` checks for palette indices `1..31`) and maintains up to `MaxLavaBubbles = 64` active bubbles within `±15` tiles of the player (`ResetCavesLavaBubbles()`, `UpdateCavesLavaBubbles()`), pre-seeded on level entry so lava is already boiling immediately.
+  - Captures a pre-fog liquid magma pixel mask (`wasLavaPx[32][64]`, where `px >= 1 && px <= 31`) before `DrawGroundFogTileBase()` blends steam over the tile, and renders `DrawCavesLavaBubblesOnTile()` **after** ground fog so rising geothermal steam never washes out the incandescent bubbles:
+    - Snaps each bubble center onto actual liquid magma pixels (`wasLavaPx`) and clips against solid stone crusts (`!wasLavaPx`).
+    - Samples `hotIdx`, `midIdx`, and `rimIdx` dynamically from `system_palette[1..31]` by luminance so bubbles automatically match all 4 Caves lava color variants (Orange, Golden-Yellow, Poison Green, and Cyan-Teal) in real time as `CycleColors(1, 31)` animates.
+    - **Phase 1 (`0%–72%` life):** Swelling 3D hemispherical lava blister (`maxRadX = 6..9 px`, `maxRadY = 4..6 px`, `domeLift = 5 px`) with dark cooled magma base skirt, glowing mid-body, and off-center incandescent top-left specular highlight.
+    - **Phase 2 (`72%–100%` life):** Popping 2:1 isometric crater rim + 4 arcing molten splatter droplets (`dx, dy - arcLift`), triggering positional `PlaySfxLoc(LS_LAVABUBBLES, b.tile, false)` (with `220 ms` cooldown within 13 tiles of the player).
+
+
 
 
 
