@@ -424,32 +424,34 @@
 
 ---
 
-## Phase 11: 3D Isometric Volumetric Ground Fog Overhaul & Interactive Entity Dispersion (Batch 1)
+## Phase 11: 3D Isometric Volumetric Ground Fog Overhaul & Interactive Entity Dispersion
 
-### 11.1 8-Direction Corner Wall Fadeout, Correct `DrawCell` Isometric Z-Order & Domain-Warped 3D Billowing (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`, `Source/engine/render/scrollrt.cpp`)
-- **8-Direction Corner Vertex Wall Weights (`gFogCornerWeight`):**
-  - Precomputes a vertex wall weight `gFogCornerWeight[vx][vy]` (`0..256`) at every 4-tile grid intersection `(vx, vy)` in `ResetGroundFogLevel()`. If any of the 4 tiles meeting at `(vx, vy)` (`(vx-1, vy-1)`, `(vx, vy-1)`, `(vx-1, vy)`, `(vx, vy)`) is a solid wall, that corner's weight is forced to `0`, and adjacent open corners are attenuated when diagonal neighbors are walls.
-  - Bilinearly interpolates `c00`, `c10`, `c01`, `c11` across each `64x32` diamond (`u, v in 0..256`), guaranteeing fog smoothly fades to `0%` opacity before touching walls in all 8 directions (N, S, E, W, NE, NW, SE, SW) with zero sharp cutoffs along North-West or North-East walls.
+### 11.1 Tightened 8-Direction Corner Wall Fadeout, Correct `DrawCell` Isometric Z-Order & True 3D Slope Shading + Vertical Z-Loft (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`, `Source/engine/render/scrollrt.cpp`)
+- **Tightened 8-Direction Corner Vertex Wall Weights (`gFogCornerWeight`, Margin Cut in Half):**
+  - Precomputes a vertex wall weight `gFogCornerWeight[vx][vy]` (`0` or `256`) at every 4-tile grid intersection `(vx, vy)` in `ResetGroundFogLevel()`. If any of the 4 tiles meeting at `(vx, vy)` (`(vx-1, vy-1)`, `(vx, vy-1)`, `(vx-1, vy)`, `(vx, vy)`) is a solid wall, that corner's weight is `0`; otherwise the first interior vertex immediately receives full `256` weight.
+  - In `SampleTileFogState()`, uses a 2x steeper ramp (`ramped = std::min(256, rawWallFade * 2)`) with a concave ease-out (`(ramped * (512 - ramped)) >> 8`), cutting the empty margin between walls and fog in half while still feathering cleanly to `0%` at the wall line in all 8 directions.
 - **Exact Floor-vs-Wall Isometric Z-Order (`DrawCell` in `Source/engine/render/scrollrt.cpp`):**
-  - `DrawGroundFogTileBase(out, tilePosition, targetBufferPosition, LightTableIndex)` is invoked inside `DrawCell()` immediately after floor microtiles `mt[0]` and `mt[1]` (and `DrawWeatherGroundTile()`) finish, and **before** `targetBufferPosition.y -= TILE_HEIGHT` and the upper wall/pillar/arch microtile loop `mt[2..15]` run. Upper wall segments, archways, pillars, and doors naturally draw on top of the floor fog instead of being covered by it.
-- **Domain-Warped 3D Volumetric Billow FBM & 3-Tier Internal Shading:**
-  - Combines a seamless `256x256` 3-octave FBM noise LUT (`gFogNoiseLut`) with a low-frequency 2-octave domain-warp curl LUT (`gFogWarpLut`) and a smoothstep S-curve (`billow = (n * n * (384 - n)) >> 16`) so fog forms distinct 3D billowing crests, mid-volume banks, and translucent troughs with vertical parallax loft (`loftOffset`).
-  - Uses 5-tier LUT blending (`Blend50`, `Blend37`, `Blend25`, `Blend19`, `Blend12`) and 3-tier internal shading (`crestShade`, `coreShade`, `troughShade`) so billowing crests catch brighter highlights (or warm ember underglow in Hell) while troughs recede into darker shadows.
+  - `DrawGroundFogTileBase(out, tilePosition, targetBufferPosition, LightTableIndex)` is invoked inside `DrawCell()` immediately after floor microtiles `mt[0]` and `mt[1]` (and `DrawWeatherGroundTile()`) finish, and **before** `targetBufferPosition.y -= TILE_HEIGHT` and the upper wall/pillar/arch microtile loop `mt[2..15]` run.
+- **True 3D Volumetric Slope Shading + Screen-Space Vertical Z-Loft (`DrawGroundFogTileBase`):**
+  - Computes the vertical screen-space heightmap derivative `verticalSlope = hBelow - hAbove` across every cloud puff.
+  - Shades the **lower underside crease (`verticalSlope < -10`)** at the floor base `sy` with a dark shadow trough (`litTrough` at `Blend37`/`Blend25`).
+  - Physically lifts the **upper cloud body and lit top dome** upward in screen space (`sy - zLift`, up to `9` pixels above the floor plane, scaled by `wallFade` so it flattens to `0` at walls) and shades the top-facing dome (`verticalSlope > 8`) with `litCrest` (`Blend37`/`Blend50`).
+  - Slowed fog drift speed by ~3x (`driftDivX = 115..240`, `driftDivY = 120..310`) and removed dynamic `loftOffset` UV jitter so fog glides slowly and heavily across the floor.
 
-### 11.2 Per-Floor Spawn Chance, 6 Distinct Biome Variants (Including Lava/Acid Pools), Single-Tile Entity Wake & Elliptical Boot Submersion
-- **Deterministic Per-Floor `spawnChancePercent` (`GetFloorFogSeedHash`):**
-  - Added `uint8_t spawnChancePercent` to `LevelFogConfig` (default `100%` across all 6 dungeon types for testing) evaluated deterministically per floor in `ResetGroundFogLevel()` from `glSeedTbl[currlevel]` (`GetFloorFogSeedHash() % 100U < cfg.spawnChancePercent`) without calling `GenerateRnd()`.
+### 11.2 Directional U-Shield Entity & Spell Cutout, Per-Floor Spawn Chance, 6 Distinct Biome Presets & Elliptical Boot Submersion
+- **Directional U-Shield Cutout Around Entities & Spells (`FogCell::dir`, `VelocityToDirection`, `SampleTileFogState`):**
+  - `FogCell` stores `uint8_t dir` (the 8-way `Direction` of the player, monster, or missile, with `VelocityToDirection()` computing missile travel direction from `missile.position.velocity`).
+  - Projects local tile offset `(isoX, isoY)` onto the facing vector `(fwd, side)`: behind the entity (`fwd < 0`) is a smooth rounded semicircle (`side^2 + fwd^2`), while in front of the entity (`fwd >= 0`) forms straight parallel side walls capped by a **flat straight leading edge** perpendicular to the facing direction (`std::max(absSide, fwdFlat)`).
+  - Increased density recovery rate from `+4` to `+10` per tick so stepped-off tiles close up cleanly behind the U-shield wake.
 - **6 Visually Distinct Dungeon Biome Presets (`GetLevelFogConfig`) & Flat Liquid/Lava/Acid Pool Support (`IsFogPassableTile`):**
-  - `IsFogPassableTile()` checks `!TileHasAny(dPiece[x][y], TileProperties::Solid)` and allows flat non-walkable liquid/lava/acid pool tiles (`DPieceMicros[piece].mt[2..15] == 0`) in Caves, Hell, and Hive to emit rising steam, smoke, and spore haze.
-  - **Cathedral (`DTYPE_CATHEDRAL`):** Cold spectral mist (`maxDensity = 165`, `PAL16_GRAY + 3` crest / `PAL16_GRAY + 6` core / `PAL16_GRAY + 10` trough, slow horizontal drift).
-  - **Catacombs (`DTYPE_CATACOMBS`):** Dusty bone-beige crypt mist (`maxDensity = 185`, `PAL16_BEIGE + 3` crest / `PAL16_BEIGE + 6` core / `PAL16_GRAY + 9` trough).
-  - **Caves (`DTYPE_CAVES`):** Warm volcanic/geothermal steam (`maxDensity = 195`, `PAL16_ORANGE + 4` warm crest / `PAL16_BEIGE + 5` core / `PAL16_GRAY + 8` trough, rising thermal draft `driftDivY = -42`, `turbulenceAmp = 24`).
-  - **Hell (`DTYPE_HELL`):** Infernal dark soot & ember-lit smoke (`maxDensity = 225`, `PAL16_RED + 5` ember-lit trough underglow / `PAL16_GRAY + 12` charcoal core / `PAL16_GRAY + 14` dark soot crest, `isInfernalSmoke = true`, `allowHeavyBlend = true`, fast rising draft `driftDivY = -28`, `turbulenceAmp = 28`).
-  - **Crypt (`DTYPE_CRYPT`):** Heavy ancient tomb fog (`maxDensity = 250`, `PAL16_YELLOW + 3` pale ectoplasmic crest / `PAL16_BEIGE + 5` core / `PAL16_GRAY + 8` trough, `allowHeavyBlend = true` with `50%` opacity core banks).
-  - **Nest / Hive (`DTYPE_NEST`):** Humid toxic yellowish-orange bio-spore miasma (`maxDensity = 190`, `PAL16_YELLOW + 4` bright spore crest / `PAL16_YELLOW + 7` core / `PAL16_ORANGE + 10` deep bio-haze trough).
-- **Single-Tile Entity & Spell Dispersion (`CarveSingleTileEntityWake`) & Elliptical Boot Submersion (`DrawGroundFogEntitySubmersion`):**
-  - `CarveSingleTileEntityWake()` strictly modifies **only the single occupied tile `(tile.x, tile.y)`** of each player, monster, or missile, applying a soft interior diamond bell curve (`centerWeight`) in `SampleTileFogState()` so adjacent tiles are never cleared.
-  - Replaced the `48x20` rectangular entity submersion box with a tight `28x16` (`RadiusX = 14, RadiusY = 8`) radially attenuated ellipse over player/monster boots (`DrawGroundFogEntitySubmersion`), eliminating visible rectangular fog patches around sprites.
+  - **Cathedral (`DTYPE_CATHEDRAL`):** Sparse cold spectral mist (`maxDensity = 165`, `intensityCutoff = 86`, `uvScale = 22`, `PAL16_BLUE + 2` crest, `driftDivX = 210, driftDivY = 290`).
+  - **Catacombs (`DTYPE_CATACOMBS`):** Medium warm dusty bone-beige haze (`maxDensity = 190`, `intensityCutoff = 76`, `uvScale = 24`, `PAL16_BEIGE + 2` / `PAL16_BEIGE + 6`, `driftDivX = 185, driftDivY = 260`).
+  - **Caves (`DTYPE_CAVES`):** Upward-rising geothermal steam (`maxDensity = 200`, `intensityCutoff = 72`, `uvScale = 26`, `driftDivX = 140, driftDivY = -155`, `PAL16_GRAY + 2` / `PAL16_BEIGE + 4`).
+  - **Hell (`DTYPE_HELL`):** Dark charcoal/black rising soot smoke (`isDarkSmoke = true`, raw dark charcoal body `PAL16_GRAY + 13` and black soot trough `PAL16_GRAY + 15` with glowing ember-orange top crests `PAL16_ORANGE + 4`, `driftDivX = 115, driftDivY = -120`).
+  - **Crypt (`DTYPE_CRYPT`):** Heavy, dense tomb fog blanket (`maxDensity = 250`, `intensityCutoff = 54`, `allowHeavyBlend = true`, large `uvScale = 20` banks, `driftDivX = 240, driftDivY = 310`).
+  - **Hive / Nest (`DTYPE_NEST`):** Slowly pulsing yellowish-green bio-spore clusters (`hasPulse = true`, tighter `uvScale = 34`, `PAL16_YELLOW + 2` / `PAL16_YELLOW + 6`, `driftDivX = 165, driftDivY = -210`).
+- **Elliptical Boot Submersion (`DrawGroundFogEntitySubmersion`):**
+  - Renders a tight `28x16` (`RadiusX = 14, RadiusY = 8`) radially attenuated ellipse over player/monster boots.
 
 ### 11.3 Application Branding (`DevilutionX: Eternity`), Main Menu Version (`DX-Eternity Beta v0.7d`) & Discord Rich Presence (`Source/diablo.cpp`, `Source/CMakeLists.txt`, `Source/discord/discord.cpp`)
 - **Main Menu Bottom-Left Version String (`Source/diablo.cpp`):**
@@ -458,7 +460,8 @@
   - Updated the generated `config.h` block in `Source/CMakeLists.txt` to `#define PROJECT_NAME "DevilutionX: Eternity"` and `#define PROJECT_VERSION "Beta v0.7d"`, updating the SDL2 window title (`SpawnWindow(PROJECT_NAME)`) and dialog boxes without altering user save/config directory paths (`"diasurgical"` / `"devilution"` in `Source/utils/paths.cpp`).
 - **Discord Rich Presence (`-DDISCORD_INTEGRATION=ON`, `Source/discord/discord.cpp`):**
   - Enabled `-DDISCORD_INTEGRATION=ON` in the MinGW-w64 CMake build (linking against `discord_game_sdk.dll`).
-  - Updated `UpdateGame()` and `UpdateMenu()` in `Source/discord/discord.cpp` to set `activity.SetName("DevilutionX: Eternity")`, `activity.SetApplicationId(DiscordDevilutionxAppId)`, `activity.SetDetails("DevilutionX: Eternity")` in menus, and `gszProductName` (`"DX-Eternity Beta v0.7d"`) as the icon hover tooltip text.
+  - Updated `UpdateMenu()` and `UpdateGame()` in `Source/discord/discord.cpp` so both keep `activity.SetName("DevilutionX: Eternity")` and `activity.SetDetails("DevilutionX: Eternity")` permanently visible, while `UpdateGame()` combines location, difficulty, level, and class into `activity.SetState(...)` (`"{Location} ({Difficulty}) - Level {N} {Class}"`) and sets `gszProductName` (`"DX-Eternity Beta v0.7d"`) as the icon hover tooltip text.
+
 
 
 

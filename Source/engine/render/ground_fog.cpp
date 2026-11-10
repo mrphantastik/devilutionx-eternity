@@ -30,19 +30,23 @@ struct FogCell {
 	uint8_t density; // 0 = completely dispersed, up to LevelFogConfig::maxDensity
 	int8_t velX;     // Swirl/push displacement X (-127..127)
 	int8_t velY;     // Swirl/push displacement Y (-127..127)
+	uint8_t dir;     // 8-way Direction of the entity/missile occupying or parting this tile
 };
 
 struct LevelFogConfig {
 	bool enabled;
 	uint8_t spawnChancePercent; // Chance (0..100%) for this dungeon floor to spawn fog (100% for testing)
 	uint8_t maxDensity;         // Target ambient density (0..255)
-	uint8_t crestShade;         // Brighter palette index for lit upper billow ridges
+	uint8_t intensityCutoff;    // Minimum intensity threshold before fog pixels render
+	int uvScale;                // Texels per tile (lower = larger cloud banks, higher = tighter clusters)
+	uint8_t crestShade;         // Brighter palette index for lit upper billow domes
 	uint8_t coreShade;          // Mid-tone palette index for main cloud body
-	uint8_t troughShade;        // Darker palette index for lower shadow pockets/undersides
-	bool isInfernalSmoke;       // True in Hell: uses ember-lit ash crests & visible smoke contrast on dark floors
+	uint8_t troughShade;        // Darker palette index for lower shadow creases/undersides
+	bool isDarkSmoke;           // True in Hell: uses raw dark charcoal body + black soot trough + ember-orange crests
 	bool allowHeavyBlend;       // True in Crypt/Hell: allows 50% LUT blend on thickest billow crests
-	int driftDivX;              // Horizontal drift divisor (lower = faster)
-	int driftDivY;              // Vertical drift divisor (lower = faster; negative = upward thermal draft)
+	bool hasPulse;              // True in Hive/Nest: slowly pulses bio-spore density
+	int driftDivX;              // Horizontal drift divisor (~3x slower: 115..240)
+	int driftDivY;              // Vertical drift divisor (~3x slower: 120..310; negative = upward thermal draft)
 };
 
 bool gNoiseInitialized = false;
@@ -52,7 +56,7 @@ bool gLevelHasFog = false;
 std::array<std::array<uint8_t, 256>, 256> gFogNoiseLut;
 std::array<std::array<uint8_t, 256>, 256> gFogWarpLut;
 
-// Per-tile interactive dispersion state (single-tile entity displacement)
+// Per-tile interactive dispersion state (single-tile directional U-shield displacement)
 std::array<std::array<FogCell, MAXDUNY>, MAXDUNX> gFogGrid;
 
 // Per-grid-vertex (corner intersection of 4 tiles) wall-distance fade weight (0..256).
@@ -67,91 +71,109 @@ LevelFogConfig GetLevelFogConfig()
 {
 	switch (leveltype) {
 	case DTYPE_CATHEDRAL:
-		// Cold spectral silver-blue mist with wide open stone floor gaps
+		// Sparse cold spectral silver-blue mist
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/195,
+			/*maxDensity=*/165,
+			/*intensityCutoff=*/86,
+			/*uvScale=*/22,
 			/*crestShade=*/PAL16_BLUE + 2,
 			/*coreShade=*/PAL16_GRAY + 5,
 			/*troughShade=*/PAL16_GRAY + 10,
-			/*isInfernalSmoke=*/false,
+			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
-			/*driftDivX=*/65,
-			/*driftDivY=*/95
+			/*hasPulse=*/false,
+			/*driftDivX=*/210,
+			/*driftDivY=*/290
 		};
 	case DTYPE_CATACOMBS:
-		// Swirling dusty bone-beige & sepulchral gray crypt haze
+		// Medium warm dusty bone-beige crypt haze
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/210,
+			/*maxDensity=*/190,
+			/*intensityCutoff=*/76,
+			/*uvScale=*/24,
 			/*crestShade=*/PAL16_BEIGE + 2,
 			/*coreShade=*/PAL16_BEIGE + 6,
 			/*troughShade=*/PAL16_GRAY + 10,
-			/*isInfernalSmoke=*/false,
+			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
-			/*driftDivX=*/55,
-			/*driftDivY=*/85
+			/*hasPulse=*/false,
+			/*driftDivX=*/185,
+			/*driftDivY=*/260
 		};
 	case DTYPE_CAVES:
-		// Upward-rising geothermal volcanic steam (also rises over lava rivers)
+		// Upward-rising geothermal steam (also rises over lava rivers)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/220,
-			/*crestShade=*/PAL16_YELLOW + 2,
+			/*maxDensity=*/200,
+			/*intensityCutoff=*/72,
+			/*uvScale=*/26,
+			/*crestShade=*/PAL16_GRAY + 2,
 			/*coreShade=*/PAL16_BEIGE + 4,
-			/*troughShade=*/PAL16_GRAY + 8,
-			/*isInfernalSmoke=*/false,
+			/*troughShade=*/PAL16_GRAY + 9,
+			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
-			/*driftDivX=*/42,
-			/*driftDivY=*/-48 // Negative Y = rising thermal steam draft
+			/*hasPulse=*/false,
+			/*driftDivX=*/140,
+			/*driftDivY=*/-155 // Negative Y = rising thermal steam draft
 		};
 	case DTYPE_HELL:
-		// Thick rising infernal ash-smoke with ember-tinted upper ridges & dark soot troughs
+		// Dark charcoal/black rising soot smoke with glowing ember-orange top crests
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/235,
-			/*crestShade=*/PAL16_ORANGE + 5, // Warm ember-ash highlight on billow crests
-			/*coreShade=*/PAL16_GRAY + 6,    // Visible medium ash-smoke body against dark charcoal floors
-			/*troughShade=*/PAL16_GRAY + 12, // Deep soot shadow in cloud troughs
-			/*isInfernalSmoke=*/true,
+			/*maxDensity=*/225,
+			/*intensityCutoff=*/64,
+			/*uvScale=*/24,
+			/*crestShade=*/PAL16_ORANGE + 4, // Glowing ember-orange top crests
+			/*coreShade=*/PAL16_GRAY + 13,   // Raw dark charcoal smoke body
+			/*troughShade=*/PAL16_GRAY + 15, // Deep black soot shadow trough
+			/*isDarkSmoke=*/true,
 			/*allowHeavyBlend=*/true,
-			/*driftDivX=*/32,
-			/*driftDivY=*/-36 // Rapid upward thermal smoke draft
+			/*hasPulse=*/false,
+			/*driftDivX=*/115,
+			/*driftDivY=*/-120 // Upward thermal smoke draft
 		};
 	case DTYPE_CRYPT:
-		// Heavy, dense multi-layered ectoplasmic tomb fog
+		// Heavy, dense tomb fog blanket with large billowing banks
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/245,
+			/*maxDensity=*/250,
+			/*intensityCutoff=*/54,
+			/*uvScale=*/20,
 			/*crestShade=*/PAL16_GRAY + 2,
 			/*coreShade=*/PAL16_GRAY + 5,
 			/*troughShade=*/PAL16_GRAY + 10,
-			/*isInfernalSmoke=*/false,
+			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/true,
-			/*driftDivX=*/75,
-			/*driftDivY=*/110
+			/*hasPulse=*/false,
+			/*driftDivX=*/240,
+			/*driftDivY=*/310
 		};
 	case DTYPE_NEST:
-		// Humid, pulsing toxic yellowish-green bio-spore miasma
+		// Slowly pulsing yellowish-green bio-spore clusters
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/215,
-			/*crestShade=*/PAL16_YELLOW + 3,
-			/*coreShade=*/PAL16_YELLOW + 7,
-			/*troughShade=*/PAL16_GRAY + 9,
-			/*isInfernalSmoke=*/false,
+			/*maxDensity=*/205,
+			/*intensityCutoff=*/70,
+			/*uvScale=*/34,
+			/*crestShade=*/PAL16_YELLOW + 2,
+			/*coreShade=*/PAL16_YELLOW + 6,
+			/*troughShade=*/PAL16_GRAY + 10,
+			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
-			/*driftDivX=*/50,
-			/*driftDivY=*/-70
+			/*hasPulse=*/true,
+			/*driftDivX=*/165,
+			/*driftDivY=*/-210
 		};
 	default:
-		return { false, 0, 0, 0, 0, 0, false, false, 60, 90 };
+		return { false, 0, 0, 80, 24, 0, 0, 0, false, false, false, 200, 260 };
 	}
 }
 
@@ -310,8 +332,39 @@ inline uint8_t Blend12(uint8_t fg, uint8_t bg)
 }
 
 /**
+ * @brief Computes the 8-way Direction of a moving missile from its screen-space velocity
+ * vector (deltaX, deltaY), falling back to _mimfnum if stationary.
+ */
+Direction VelocityToDirection(int vx, int vy, int fallbackMimfnum)
+{
+	if (vx == 0 && vy == 0) {
+		if (fallbackMimfnum >= 0 && fallbackMimfnum < 8)
+			return static_cast<Direction>(fallbackMimfnum);
+		if (fallbackMimfnum >= 0 && fallbackMimfnum < 16)
+			return static_cast<Direction>((fallbackMimfnum / 2) & 7);
+		return Direction::South;
+	}
+
+	// Compensate for 2:1 isometric vertical aspect ratio
+	const int sy = vy * 2;
+	const int ax = std::abs(vx);
+	const int ay = std::abs(sy);
+
+	if (ay > ax * 2) {
+		return (sy >= 0) ? Direction::South : Direction::North;
+	}
+	if (ax > ay * 2) {
+		return (vx >= 0) ? Direction::East : Direction::West;
+	}
+	if (vx < 0) {
+		return (sy >= 0) ? Direction::SouthWest : Direction::NorthWest;
+	}
+	return (sy >= 0) ? Direction::SouthEast : Direction::NorthEast;
+}
+
+/**
  * @brief Displaces fog strictly on the exact single tile (tile.x, tile.y) occupied by
- * an entity or missile — no multi-tile radial aura or surrounding room falloff.
+ * an entity or missile, recording its facing Direction for the U-shield cutout.
  */
 void CarveSingleTileEntityWake(Point tile, Direction dir, bool isMoving, int dropStrength)
 {
@@ -324,6 +377,7 @@ void CarveSingleTileEntityWake(Point tile, Direction dir, bool isMoving, int dro
 
 	FogCell &cell = gFogGrid[tile.x][tile.y];
 	cell.density = static_cast<uint8_t>(std::max(0, static_cast<int>(cell.density) - dropStrength));
+	cell.dir = static_cast<uint8_t>(dirIdx);
 
 	if (isMoving) {
 		cell.velX = static_cast<int8_t>(std::clamp(static_cast<int>(cell.velX) + DirPushX[dirIdx], -120, 120));
@@ -332,14 +386,14 @@ void CarveSingleTileEntityWake(Point tile, Direction dir, bool isMoving, int dro
 }
 
 /**
- * @brief Computes the bilinearly interpolated wall-fade weight (0..256) and single-tile
- * entity dispersion density at sub-tile coordinates (u256, v256) in [0..256] x [0..256].
+ * @brief Computes the tightened wall-fade weight (0..256) and directional U-shield entity
+ * cutout at sub-tile coordinates (u256, v256) in [0..256] x [0..256].
  *
- * Because gFogCornerWeight[vx][vy] is 0 whenever ANY of the 4 tiles meeting at corner
- * (vx, vy) is a solid wall, fog smoothly fades to 0% along every wall boundary in all
- * 8 directions (N, S, E, W, NE, NW, SE, SW).
+ * - Behind the entity (fwd < 0): smooth rounded semicircle (side^2 + fwd^2).
+ * - In front of the entity (fwd >= 0, facing direction): straight side walls capped by a
+ *   flat straight leading edge perpendicular to the facing vector (std::max(absSide, fwdFlat)).
  */
-inline void SampleTileFogState(Point tile, int u256, int v256, int maxDensity, int &outDensity, int &outSwirlX, int &outSwirlY)
+inline void SampleTileFogState(Point tile, int u256, int v256, int maxDensity, int &outDensity, int &outWallFade, int &outSwirlX, int &outSwirlY)
 {
 	const int tx = std::clamp(tile.x, 0, MAXDUNX - 1);
 	const int ty = std::clamp(tile.y, 0, MAXDUNY - 1);
@@ -352,30 +406,63 @@ inline void SampleTileFogState(Point tile, int u256, int v256, int maxDensity, i
 	const int w01 = (invU * v256) >> 8;
 	const int w11 = (u256 * v256) >> 8;
 
-	// 1. Bilinearly interpolate the 4 true corner vertex wall-fade weights (0..256)
+	// 1. Tightened wall-to-fog margin (cut in half): 2x steeper ramp + concave ease-out
 	const int cw00 = gFogCornerWeight[tx][ty];
 	const int cw10 = gFogCornerWeight[tx + 1][ty];
 	const int cw01 = gFogCornerWeight[tx][ty + 1];
 	const int cw11 = gFogCornerWeight[tx + 1][ty + 1];
 
-	int wallFade = (cw00 * w00 + cw10 * w10 + cw01 * w01 + cw11 * w11) >> 8;
-	// Smoothstep the wall fade so the edge feathers out organically before touching masonry
-	wallFade = (wallFade * wallFade * (768 - 2 * wallFade)) >> 16;
+	const int rawWallFade = (cw00 * w00 + cw10 * w10 + cw01 * w01 + cw11 * w11) >> 8;
+	const int ramped = std::min(256, rawWallFade * 2);
+	const int wallFade = (ramped * (512 - ramped)) >> 8;
+	outWallFade = wallFade;
 
-	// 2. Apply single-tile entity dispersion localized to this tile's interior (soft diamond bell)
+	// 2. Directional U-Shield cutout around entities & spells on this single tile
 	const FogCell &centerCell = gFogGrid[tx][ty];
 	const int missing = std::max(0, maxDensity - static_cast<int>(centerCell.density));
+	if (missing <= 0) {
+		outDensity = (maxDensity * wallFade) >> 8;
+		outSwirlX = 0;
+		outSwirlY = 0;
+		return;
+	}
 
-	// Center weight peaks in the middle of the tile and tapers at the tile borders so a single-tile
-	// dispersion parts the fog inside this exact cell without hard seam lines against neighbor tiles.
-	const int distU = std::abs(u256 - 128);
-	const int distV = std::abs(v256 - 128);
-	const int radial = std::max(0, 256 - ((distU * distU + distV * distV) >> 6));
-	const int localDensity = std::max(0, maxDensity - ((missing * radial) >> 8));
+	// Screen-aligned isometric offset from tile center (-128..128)
+	// isoX > 0 = East (Right), isoY > 0 = South (Down)
+	const int isoX = ((u256 - 128) - (v256 - 128)) >> 1;
+	const int isoY = ((u256 - 128) + (v256 - 128)) >> 1;
+
+	// 8-way unit forward vectors in screen space (256 = 1.0, 181 = 256 / sqrt(2))
+	// Order: South(0), SouthWest(1), West(2), NorthWest(3), North(4), NorthEast(5), East(6), SouthEast(7)
+	static constexpr int FwdX[8] = { 0, -181, -256, -181, 0, 181, 256, 181 };
+	static constexpr int FwdY[8] = { 256, 181, 0, -181, -256, -181, 0, 181 };
+
+	const unsigned dirIdx = centerCell.dir & 7U;
+	const int fx = FwdX[dirIdx];
+	const int fy = FwdY[dirIdx];
+
+	// Project local offset onto entity's facing vector (fwd) and perpendicular axis (side)
+	const int fwd = (isoX * fx + isoY * fy) >> 8;
+	const int side = (isoX * (-fy) + isoY * fx) >> 8;
+	const int absSide = std::abs(side);
+
+	int distMetric = 0;
+	if (fwd < 0) {
+		// Behind the entity: smooth rounded semicircle
+		distMetric = (side * side + fwd * fwd) >> 6;
+	} else {
+		// In front of the entity: straight side walls capped by a flat straight leading edge
+		const int fwdFlat = (fwd * 12) / 10;
+		const int boxDist = std::max(absSide, fwdFlat);
+		distMetric = (boxDist * boxDist) >> 6;
+	}
+
+	const int uShield = std::max(0, 256 - distMetric);
+	const int localDensity = std::max(0, maxDensity - ((missing * uShield) >> 8));
 
 	outDensity = (localDensity * wallFade) >> 8;
-	outSwirlX = (static_cast<int>(centerCell.velX) * radial) >> 8;
-	outSwirlY = (static_cast<int>(centerCell.velY) * radial) >> 8;
+	outSwirlX = (static_cast<int>(centerCell.velX) * uShield) >> 8;
+	outSwirlY = (static_cast<int>(centerCell.velY) * uShield) >> 8;
 }
 
 } // namespace
@@ -401,11 +488,13 @@ void ResetGroundFogLevel()
 			gFogGrid[x][y].density = passable ? target : 0;
 			gFogGrid[x][y].velX = 0;
 			gFogGrid[x][y].velY = 0;
+			gFogGrid[x][y].dir = static_cast<uint8_t>(Direction::South);
 		}
 	}
 
 	// Precompute per-corner vertex wall-fade weights (0..256) at every grid intersection (vx, vy).
 	// Vertex (vx, vy) is shared by the 4 tiles (vx-1, vy-1), (vx, vy-1), (vx-1, vy), and (vx, vy).
+	// Full 256 weight is set immediately at the first interior vertex so the wall-to-fog margin is cut in half.
 	for (int vx = 0; vx <= MAXDUNX; vx++) {
 		for (int vy = 0; vy <= MAXDUNY; vy++) {
 			const bool t00 = IsFogPassableTile({ vx - 1, vy - 1 });
@@ -413,25 +502,11 @@ void ResetGroundFogLevel()
 			const bool t01 = IsFogPassableTile({ vx - 1, vy });
 			const bool t11 = IsFogPassableTile({ vx, vy });
 
-			// If ANY of the 4 tiles meeting at this vertex is a solid wall, weight at the wall is 0!
 			if (!t00 || !t10 || !t01 || !t11) {
 				gFogCornerWeight[vx][vy] = 0;
-				continue;
+			} else {
+				gFogCornerWeight[vx][vy] = 256;
 			}
-
-			// Count how many 1-tile-away outer ring tiles around this vertex are passable (out of 12)
-			// so fog begins gently tapering 1 tile before reaching a wall.
-			int outerPassable = 0;
-			for (int dx = -2; dx <= 1; dx++) {
-				for (int dy = -2; dy <= 1; dy++) {
-					if (dx >= -1 && dx <= 0 && dy >= -1 && dy <= 0)
-						continue;
-					if (IsFogPassableTile({ vx + dx, vy + dy }))
-						outerPassable++;
-				}
-			}
-			// Ranges smoothly from 140 (next to a wall) up to 256 (open room interior)
-			gFogCornerWeight[vx][vy] = static_cast<uint16_t>(140 + (outerPassable * 116) / 12);
 		}
 	}
 }
@@ -449,7 +524,7 @@ void UpdateGroundFogSimulation()
 
 	const int maxDens = cfg.maxDensity;
 
-	// 1. Relax velocity and regrow density locally in a window around the player
+	// 1. Relax velocity and regrow density (+10 per tick so stepped-off tiles close up cleanly behind the U-shield wake)
 	const Point center = MyPlayer != nullptr ? Point(MyPlayer->position.tile) : ViewPosition;
 	const int minX = std::max(1, center.x - 28);
 	const int maxX = std::min(MAXDUNX - 2, center.x + 28);
@@ -467,7 +542,7 @@ void UpdateGroundFogSimulation()
 			}
 
 			if (cell.density < maxDens) {
-				cell.density = static_cast<uint8_t>(std::min(maxDens, static_cast<int>(cell.density) + 4));
+				cell.density = static_cast<uint8_t>(std::min(maxDens, static_cast<int>(cell.density) + 10));
 			} else if (cell.density > maxDens) {
 				cell.density = static_cast<uint8_t>(maxDens);
 			}
@@ -477,15 +552,15 @@ void UpdateGroundFogSimulation()
 		}
 	}
 
-	// 2. Single-tile wake for active Players (only the exact tile the player occupies)
+	// 2. Single-tile directional U-shield wake for active Players
 	for (const Player &player : Players) {
 		if (!player.plractive || !player.isOnActiveLevel())
 			continue;
 		const bool moving = player.isWalking();
-		CarveSingleTileEntityWake(player.position.tile, player._pdir, moving, moving ? 135 : 45);
+		CarveSingleTileEntityWake(player.position.tile, player._pdir, moving, moving ? 145 : 65);
 	}
 
-	// 3. Single-tile wake for active Monsters (only the exact tile the monster occupies)
+	// 3. Single-tile directional U-shield wake for active Monsters
 	if (leveltype != DTYPE_TOWN) {
 		for (size_t i = 0; i < ActiveMonsterCount; i++) {
 			const Monster &monster = Monsters[ActiveMonsters[i]];
@@ -496,15 +571,19 @@ void UpdateGroundFogSimulation()
 			    || monster.mode == MonsterMode::SpecialMeleeAttack
 			    || monster.mode == MonsterMode::RangedAttack
 			    || monster.mode == MonsterMode::SpecialRangedAttack;
-			CarveSingleTileEntityWake(monster.position.tile, monster.direction, moving, (moving || attacking) ? 120 : 35);
+			CarveSingleTileEntityWake(monster.position.tile, monster.direction, moving, (moving || attacking) ? 130 : 55);
 		}
 	}
 
-	// 4. Single-tile wake for active Missiles / Spells (only the exact cell the missile occupies)
+	// 4. Single-tile directional U-shield wake for active Missiles / Spells
 	for (const Missile &missile : Missiles) {
 		if (missile._miDelFlag)
 			continue;
-		CarveSingleTileEntityWake(missile.position.tile, Direction::South, true, 130);
+		const Direction missileDir = VelocityToDirection(
+		    missile.position.velocity.deltaX,
+		    missile.position.velocity.deltaY,
+		    missile._mimfnum);
+		CarveSingleTileEntityWake(missile.position.tile, missileDir, true, 140);
 	}
 }
 
@@ -527,25 +606,32 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 
 	EnsureFogNoiseInitialized();
 
-	// Attenuate crest, core, and trough shades through local dungeon lighting (dLight).
-	// For Hell's infernal smoke, clamp light attenuation slightly brighter so rising ash/ember
-	// smoke billows remain distinctly visible even in darker corners of Hell.
-	const int effLightIdx = cfg.isInfernalSmoke ? std::min(lightIndex, LightsMax - 5) : lightIndex;
-	const uint8_t *lightTbl = LightTables[std::clamp(effLightIdx, 0, LightsMax - 1)].data();
+	// Resolve volumetric shades:
+	// In Hell (isDarkSmoke), use raw dark charcoal body (PAL16_GRAY + 13) and black soot trough
+	// (PAL16_GRAY + 15) directly so they darken bright lava/floors into heavy soot smoke instead
+	// of collapsing to index 0, while lighting the glowing ember-orange top crests.
+	const uint8_t *lightTbl = LightTables[std::clamp(lightIndex, 0, LightsMax - 1)].data();
 	const uint8_t litCrest = lightTbl[cfg.crestShade];
-	const uint8_t litCore = lightTbl[cfg.coreShade];
-	const uint8_t litTrough = lightTbl[cfg.troughShade];
+	const uint8_t litCore = cfg.isDarkSmoke ? cfg.coreShade : lightTbl[cfg.coreShade];
+	const uint8_t litTrough = cfg.isDarkSmoke ? cfg.troughShade : lightTbl[cfg.troughShade];
 
 	const int32_t ticks = static_cast<int32_t>(SDL_GetTicks());
 	const int driftX1 = ticks / cfg.driftDivX;
 	const int driftY1 = ticks / cfg.driftDivY;
-	const int driftX2 = -ticks / ((cfg.driftDivX * 4) / 3);
-	const int driftY2 = ticks / ((cfg.driftDivY * 3) / 4);
+	const int driftX2 = -ticks / ((cfg.driftDivX * 3) / 2);
+	const int driftY2 = ticks / ((cfg.driftDivY * 4) / 3);
 
-	// Use larger world-space UV stride (24 texels per tile instead of 32) so individual cloud
-	// banks span 2.5 to 4 tiles across for natural multi-tile volumetric formations.
-	const int baseWorldU = tilePosition.x * 24;
-	const int baseWorldV = tilePosition.y * 24;
+	// Optional slow bio-spore breathing pulse for Hive/Nest
+	int effectiveMaxDensity = cfg.maxDensity;
+	if (cfg.hasPulse) {
+		const int phase = (ticks / 28 + tilePosition.x * 19 + tilePosition.y * 31) & 0xFF;
+		const int triWave = (phase < 128) ? phase : (255 - phase); // 0..127
+		effectiveMaxDensity = std::clamp(static_cast<int>(cfg.maxDensity) - 18 + (triWave >> 2), 0, 255);
+	}
+
+	const int uvScale = cfg.uvScale;
+	const int baseWorldU = tilePosition.x * uvScale;
+	const int baseWorldV = tilePosition.y * uvScale;
 
 	const int outW = out.w();
 	const int outH = out.h();
@@ -568,15 +654,16 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 			const int u256 = std::clamp((localX * 4) + (localY * 8) + 128, 0, 255);
 			const int v256 = std::clamp((localY * 8) - (localX * 4) + 128, 0, 255);
 
-			int cellDensity = cfg.maxDensity;
+			int cellDensity = effectiveMaxDensity;
+			int wallFade = 256;
 			int swirlX = 0;
 			int swirlY = 0;
-			SampleTileFogState(tilePosition, u256, v256, cfg.maxDensity, cellDensity, swirlX, swirlY);
+			SampleTileFogState(tilePosition, u256, v256, effectiveMaxDensity, cellDensity, wallFade, swirlX, swirlY);
 			if (cellDensity < 18)
 				continue;
 
-			const int tileU = (u256 * 24) >> 8;
-			const int tileV = (v256 * 24) >> 8;
+			const int tileU = (u256 * uvScale) >> 8;
+			const int tileV = (v256 * uvScale) >> 8;
 
 			// Sample domain-warp field to curl the mist organically
 			const int warpUIdx = (baseWorldU + tileU + driftX2) & 0xFF;
@@ -584,40 +671,73 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 			const int warpX = (static_cast<int>(gFogWarpLut[warpVIdx][warpUIdx]) - 128) >> 3;
 			const int warpY = (static_cast<int>(gFogWarpLut[(warpVIdx + 73) & 0xFF][(warpUIdx + 41) & 0xFF]) - 128) >> 3;
 
-			// Base ground-hugging fog layer
+			// Primary and secondary scrolling FBM coordinates (without dynamic loftOffset UV jitter)
 			const int wu1 = (baseWorldU + tileU + driftX1 + warpX + (swirlX >> 2)) & 0xFF;
 			const int wv1 = (baseWorldV + tileV + driftY1 + warpY + (swirlY >> 2)) & 0xFF;
-			const int baseNoise = gFogNoiseLut[wv1][wu1];
+			const int wu2 = (baseWorldU + tileU + driftX2 - warpY + (swirlX >> 2)) & 0xFF;
+			const int wv2 = (baseWorldV + tileV + driftY2 + warpX + (swirlY >> 2)) & 0xFF;
 
-			// Upper 3D lofted billow layer (sampled with isometric vertical parallax offset)
-			const int loftOffset = (baseNoise >> 5); // 0..7 texels of 3D vertical parallax loft
-			const int wu2 = (baseWorldU + tileU - loftOffset + driftX2 - warpY + (swirlX >> 1)) & 0xFF;
-			const int wv2 = (baseWorldV + tileV - loftOffset + driftY1 + warpX + (swirlY >> 1)) & 0xFF;
-			const int upperNoise = gFogNoiseLut[wv2][wu2];
-
-			// Combine base blanket and upper 3D billow crests without flattening peaks
-			const int billowPeak = std::max(baseNoise, (baseNoise + upperNoise) >> 1);
-			const int finalIntensity = (billowPeak * cellDensity) >> 8;
-			if (finalIntensity < 68)
+			const int hCenter = (static_cast<int>(gFogNoiseLut[wv1][wu1]) * 3 + static_cast<int>(gFogNoiseLut[wv2][wu2])) >> 2;
+			const int finalIntensity = (hCenter * cellDensity) >> 8;
+			if (finalIntensity < cfg.intensityCutoff)
 				continue;
 
-			// Vertical ridge lighting gradient inside each billow: where upperNoise exceeds baseNoise,
-			// the top ridge of the cloud catches the torchlight (litCrest); deep pockets use litTrough.
-			const bool isLitCrest = (upperNoise > baseNoise + 14) && (finalIntensity > 138);
+			// True 3D volumetric vertical slope derivative (verticalSlope = hBelow - hAbove):
+			// - verticalSlope > 8  : top-facing upper dome catching overhead light (litCrest)
+			// - verticalSlope < -10: lower underside crease resting in shadow on the floor (litTrough)
+			const int hAbove = (static_cast<int>(gFogNoiseLut[(wv1 - 3) & 0xFF][(wu1 - 3) & 0xFF]) * 3
+			                       + static_cast<int>(gFogNoiseLut[(wv2 - 3) & 0xFF][(wu2 - 3) & 0xFF]))
+			    >> 2;
+			const int hBelow = (static_cast<int>(gFogNoiseLut[(wv1 + 3) & 0xFF][(wu1 + 3) & 0xFF]) * 3
+			                       + static_cast<int>(gFogNoiseLut[(wv2 + 3) & 0xFF][(wu2 + 3) & 0xFF]))
+			    >> 2;
+			const int verticalSlope = hBelow - hAbove;
 
-			uint8_t &dst = out[{ sx, sy }];
-			if (finalIntensity > 182) {
-				const uint8_t shade = isLitCrest ? litCrest : litCore;
-				dst = cfg.allowHeavyBlend ? Blend50(shade, dst) : Blend37(shade, dst);
-			} else if (finalIntensity > 142) {
-				const uint8_t shade = isLitCrest ? litCrest : litCore;
-				dst = Blend37(shade, dst);
-			} else if (finalIntensity > 104) {
-				dst = Blend25(litCore, dst);
-			} else if (finalIntensity > 82) {
-				dst = Blend19(litTrough, dst);
+			// 1. Floor base contact & underside shadow crease at sy
+			uint8_t &dstBase = out[{ sx, sy }];
+			if (verticalSlope < -10) {
+				dstBase = (finalIntensity > 140) ? Blend37(litTrough, dstBase) : Blend25(litTrough, dstBase);
+			} else if (finalIntensity > 120) {
+				dstBase = Blend19(litTrough, dstBase);
 			} else {
-				dst = Blend12(litTrough, dst);
+				dstBase = Blend12(litTrough, dstBase);
+			}
+
+			// 2. Physical screen-space vertical Z-loft (lifts upper cloud body and lit top dome
+			// up to 9 pixels above the floor plane, scaled by wallFade so it flattens to 0 at walls)
+			const int rawLift = ((finalIntensity - cfg.intensityCutoff) * 9) / std::max(1, 255 - static_cast<int>(cfg.intensityCutoff));
+			const int zLift = std::clamp((rawLift * wallFade) >> 8, 0, 9);
+			const int syLift = sy - zLift;
+			if (syLift < 0 || syLift >= outH)
+				continue;
+
+			uint8_t puffShade = litCore;
+			if (verticalSlope > 8) {
+				puffShade = litCrest;
+			} else if (verticalSlope < -10) {
+				puffShade = litTrough;
+			}
+
+			// Fill intermediate mid-column pixel when lifted >= 3px so 3D billows never show scanline gaps
+			if (zLift >= 3) {
+				const int syMid = sy - (zLift >> 1);
+				if (syMid >= 0 && syMid < outH) {
+					uint8_t &dstMid = out[{ sx, syMid }];
+					dstMid = (finalIntensity > 145) ? Blend25(litCore, dstMid) : Blend19(litCore, dstMid);
+				}
+			}
+
+			uint8_t &dstTop = out[{ sx, syLift }];
+			if (finalIntensity > 180) {
+				dstTop = cfg.allowHeavyBlend ? Blend50(puffShade, dstTop) : Blend37(puffShade, dstTop);
+			} else if (finalIntensity > 138) {
+				dstTop = Blend37(puffShade, dstTop);
+			} else if (finalIntensity > 102) {
+				dstTop = Blend25(puffShade, dstTop);
+			} else if (finalIntensity > 80) {
+				dstTop = Blend19(puffShade, dstTop);
+			} else {
+				dstTop = Blend12(puffShade, dstTop);
 			}
 		}
 	}
@@ -649,10 +769,9 @@ void DrawGroundFogEntitySubmersion(const Surface &out, Point tilePosition, Point
 	if (collarDensity < 32)
 		return;
 
-	const int effLightIdx = cfg.isInfernalSmoke ? std::min(lightIndex, LightsMax - 5) : lightIndex;
-	const uint8_t *lightTbl = LightTables[std::clamp(effLightIdx, 0, LightsMax - 1)].data();
+	const uint8_t *lightTbl = LightTables[std::clamp(lightIndex, 0, LightsMax - 1)].data();
 	const uint8_t litCrest = lightTbl[cfg.crestShade];
-	const uint8_t litCore = lightTbl[cfg.coreShade];
+	const uint8_t litCore = cfg.isDarkSmoke ? cfg.coreShade : lightTbl[cfg.coreShade];
 
 	const int32_t ticks = static_cast<int32_t>(SDL_GetTicks());
 	const int driftX = ticks / cfg.driftDivX;
@@ -686,8 +805,8 @@ void DrawGroundFogEntitySubmersion(const Surface &out, Point tilePosition, Point
 				continue;
 
 			const int radialFalloff = 256 - distSq;
-			const int wu = (tilePosition.x * 24 + dx + driftX) & 0xFF;
-			const int wv = (tilePosition.y * 24 + dy * 2 + driftY) & 0xFF;
+			const int wu = (tilePosition.x * cfg.uvScale + dx + driftX) & 0xFF;
+			const int wv = (tilePosition.y * cfg.uvScale + dy * 2 + driftY) & 0xFF;
 			const int noise = gFogNoiseLut[wv][wu];
 
 			const int wispIntensity = (((noise * collarDensity) >> 8) * radialFalloff) >> 8;

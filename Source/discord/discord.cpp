@@ -101,7 +101,8 @@ std::string GetStateString()
 {
 	constexpr std::array<const char *, 3> DifficultyStrs = { N_("Normal"), N_("Nightmare"), N_("Hell") };
 	const string_view difficultyStr = _(DifficultyStrs[sgGameInitInfo.nDifficulty]);
-	return fmt::format(fmt::runtime(_(/* TRANSLATORS: Discord state i.e. "Nightmare difficulty" */ "{} difficulty")), difficultyStr);
+	const string_view charClassStr = _(PlayersData[static_cast<int>(MyPlayer->_pClass)].className);
+	return fmt::format("{} ({}) - Level {} {}", GetLocationString(), difficultyStr, tracked_data.playerLevel, charClassStr);
 }
 
 std::string GetTooltipString()
@@ -146,8 +147,7 @@ void UpdateGame()
 		discord::Activity activity = {};
 		activity.SetName("DevilutionX: Eternity");
 		activity.SetApplicationId(DiscordDevilutionxAppId);
-		std::string detailStr = GetDetailString();
-		activity.SetDetails(detailStr.c_str());
+		activity.SetDetails("DevilutionX: Eternity");
 		std::string stateStr = GetStateString();
 		activity.SetState(stateStr.c_str());
 		activity.SetInstance(true);
