@@ -4,7 +4,7 @@
 
 # DX:Eternity
 
-Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine, this project brings greater variety, enhanced visuals and modern acoustic fidelity to vanilla Diablo. Without unnecessary feature bloat, it carefully maintains the raw pace, tone, and itemization of the 1996 original.
+Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) engine, this project brings greater variety, enhanced visuals and modern acoustic fidelity to vanilla Diablo. Without unnecessary feature bloat, it carefully maintains the raw pace, tone and itemization of the 1996 original.
 
 ---
 
@@ -49,7 +49,7 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 ### New Class Archetype: The Female Barbarian
 Pairs the Rogue’s visuals and voice lines with the cut *Hellfire* Barbarian class mechanics:
 - **Attributes:** High Strength and Vitality caps with zero Magic affinity.
-- **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs, and axes with one-handed shield blocking mechanics), innate stun/knockback advantages and the active **Rage** skill.
+- **Mastery & Traits:** Full two-handed weapon proficiency (wielding two-handed swords, clubs and axes with one-handed shield blocking mechanics), innate stun/knockback advantages and the active **Rage** skill.
 
 ---
 
@@ -69,7 +69,7 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 - Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
 - Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
 - Slaying Diablo in single player drops full boss loot and leaves the game session open, allowing you to clean up unfinished quests or explore secondary dungeon branches.
-- Town entrance portals to the Catacombs, Caves, and Hell are unlocked from the start of a Single Player campaign.
+- Town entrance portals to the Catacombs, Caves and Hell are unlocked from the start of a Single Player campaign.
 
 ---
 
