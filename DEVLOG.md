@@ -518,6 +518,25 @@
   - Paused color cycling (`diablo_color_cyc_logic()` in `Source/diablo.cpp`), rain/puddle splashes (`gWeatherSimTick` in `Source/engine/render/weather.cpp`), and lava bubbles (`UpdateCavesLavaBubblesSimulation()` / `EnsureLiveLavaBubbleShades()`) when the Single Player `ESC` menu (`gmenu_is_active()`) is open.
   - Replaced positional `PlaySfxLoc(LS_LAVABUBBLES, ...)` calls with `SyncLavaBubbleAudio()` using single-instance non-positional `PlayLoopingSFX(LS_LAVABUBBLES, lavaVolume)` (smoothly scaling volume from `-1750` at 15 tiles to `-150` adjacent to lava) and `StopSFX(LS_LAVABUBBLES)` immediately when opening the `ESC` menu, pausing, or leaving Caves.
 
+### 11.7 Ground Fog v4 (2-Layer World-Locked Separation, Slow Drift & High-Contrast Hell Smoke), `LavaBubbles.wav` Loop Fix & Final Ambience Batch (`Source/effects.h`, `Source/effects.cpp`, `Source/engine/render/weather.cpp`, `Source/engine/render/ground_fog.cpp`)
+- **Fix `LavaBubbles.wav` Continuously Restarting & Cutting Off (`Source/engine/render/weather.cpp` & `Source/effects.cpp`):**
+  - **Root Cause:** `UpdateWeatherState()` is called every frame in `scrollrt.cpp` and invokes `ResetWeatherState()` whenever `leveltype != DTYPE_TOWN`. Having `StopSFX(LS_LAVABUBBLES)` inside `ResetWeatherState()` killed `LavaBubbles.wav` on every single dungeon frame right after `SyncLavaBubbleAudio()` started it.
+  - **Fix:** Removed `StopSFX(LS_LAVABUBBLES)` and `StopSFX(LS_INSECTBUZZ)` from `ResetWeatherState()` so dungeon frames never interrupt active dungeon ambience loops; they are stopped only on `OnWeatherNewGame()`, on returning to Town (`OnWeatherLevelLoad`), inside `SyncLavaBubbleAudio()` / `SyncInsectSwarmAudio()`, and in `sound_update()` / `effects_play_sound()` when `!gbRunGame`.
+- **Ground Fog v4 — 100% World-Locked Coordinates, 3.5x–4x Slower Sub-Texel Drift, Distinct 2-Layer Separation & Hell Smoke Visibility (`Source/engine/render/ground_fog.cpp`):**
+  - **Zero Camera-Move Shift:** Removed `camWorldPxX` / `camParU` / `camParV` so both Layer 1 (`baseWorldU1 = tx * uvScale1`) and Layer 2 (`baseWorldU2 = tx * uvScale2 + 37`) are 100% world-locked to dungeon floor tiles and never slide in reaction to player walking.
+  - **3.5x–4x Slower Sub-Texel Drift:** Increased `driftDivX` and `driftDivY` to `460..980` across all 6 dungeon presets and replaced integer `(warpDriftX >> 8)` indexing with sub-texel `SampleLutBilinear(gFogWarpLut, ...)` inside `UpdateCachedFogSheets30Hz()`.
+  - **Distinct 2-Layer Volumetric Separation + SE Drop-Shadows:**
+    - **Layer 1 (Low Ground Mist Bed):** Finer spatial scale (`uvScale1 = cfg.uvScale`), wider floor coverage (`floorCutoff = cfg.intensityCutoff`), slow creeping drift, shaded with `litCore` / `litTrough`.
+    - **Layer 2 (Elevated 3D Cloud Puffs):** `2x` larger scale (`uvScale2 = cfg.uvScale / 2`), higher threshold (`canopyCutoff = cfg.intensityCutoff + 24`) forming distinct floating 3D cloud islands gliding at a ~65° cross-wind angle across Layer 1, highlighted with bright `litCrest` domes (`+36` opacity boost) and casting a dark `litTrough` drop-shadow (`+2, +2` texels SE) onto Layer 1 underneath.
+  - **High-Contrast Hell Smoke (`DTYPE_HELL`):** Uses `crestShade = PAL16_GRAY + 5` (smoky ash-gray upper billow crests), `coreShade = PAL16_GRAY + 9` (dark smoldering charcoal smoke body), and `troughShade = 0` (Pure Black shadow troughs), making both layers clearly visible over Hell's floor while darkening smoothly to black at the edge of the light radius.
+- **Hive & Catacombs 3D Insect Swarms (`Source/effects.h`, `Source/effects.cpp`, `Source/engine/render/ground_fog.cpp`):**
+  - Spawns up to `MaxInsectSwarms = 18` 3D orbiting insect swarms in open room tiles (`IsInsectSwarmRoomTile`) on `DTYPE_CATACOMBS` and `DTYPE_NEST` across 3 visual variants (Carrion Flies, Plague Locusts, Blood Wasps/Mites).
+  - Features slow autonomous room drift, single-instance proximity `LS_INSECTBUZZ` loop (`sfx\misc\InsectBuzz.wav` via `SyncInsectSwarmAudio()`), and permanent walk-through dispersal with outward radial scatter and one-shot `LS_INSECTDISPERSE` (`sfx\misc\InsectBuzzDisperse.wav`).
+- **Tristram Snow, Blizzard (`SnowHeavy`) & Ash Storm (`Source/effects.h`, `Source/effects.cpp`, `Source/engine/render/weather.cpp`):**
+  - Rolls with equal `1/3` probability per New Game session (`TownWeatherKind::Rain`, `Snow`, `AshStorm`) locked for the entire game session, toggling only between `Light` and `Heavy` after `>= 1` minute in a dungeon.
+  - `SnowHeavy` renders a wind-driven blizzard with gale-force lateral shear and diagonal flurry streaks (`SnowLight.wav` / `SnowHeavy.wav`), while `AshStorm` mixes swirling dark ash flakes with glowing orange-red volcanic ember cinders (`AshStormLight.wav` / `AshStormHeavy.wav`) and settling ground particles (`DrawSingleSettlingSnowFlake`).
+
+
 
 
 

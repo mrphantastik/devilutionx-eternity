@@ -2,28 +2,11 @@
  * @file weather.cpp
  *
  * Implementation of Tristram weather & environmental particle effects:
- * - Dynamic Light Rain & Heavy Rain states (+35% raindrop intensity, persisted per game session
- *   and only re-rolled when returning to Tristram after >= 1 minute in a dungeon)
- * - Outdoor Wet Ground & Glossy Surface Reflections (`DrawWetGroundGloss`):
- *   - Seamless world-space multi-scale topographic wetness field across walkable outdoor tiles
- *   - Shallow sky-reflecting water puddle basins with damp darkened rims and animated wind-driven
- *     capillary wave specular glints
- *   - Rain-slicked cobblestone/stone micro-specular highlights (`logical_palette` luminance-aware)
- *     with player Fresnel proximity glint and electric sky reflection during lightning flashes
- * - Localized 5-stage isometric puddle splash animations on walkable outdoor ground tiles
- *   (-35% frequency, 50% smaller average radius, and +50% transparency via 50%/25%/12.5% palette
- *   blending), rendered in DrawCell() after mt[0..1] and before mt[2..15]
- * - Precipitation / Steam Fog:
- *   1) Non-overlapping world-space drifting 4-puff steam fog banks (-30% count, +20% size,
- *      +35% transparency via 12.5%/6.25% contiguous LUT blending)
- *   2) Curling rising ground-evaporation steam wisps (-35% size, +50% transparency via
- *      12.5%/6.25% contiguous LUT blending)
- * - Camera-compensated multi-layer falling raindrop streaks with 75%/50%/25% palette blending
- * - Intense full-screen distant lightning palette flashes with multi-strike flicker (every 30-60s)
- * - Speed-of-sound delayed thunder claps timed to lightning strikes:
- *   sfx\misc\thundera.wav (distant, Light Rain) and sfx\misc\thunderb.wav (closer, Heavy Rain)
- * - Seamless looping playback of sfx\misc\RainLightLoop.wav and sfx\misc\RainHeavyLoop.wav
- *   that stops cleanly when entering dungeons or quitting to the main menu
+ * - Equal 1/3 probability New Game weather modes (Rain, Snow, AshStorm) locked per game session,
+ *   toggling between Light & Heavy intensity only after >= 1 minute in a dungeon.
+ * - SnowHeavy acts as a true wind-driven snowstorm/blizzard with gale-force lateral shear & diagonal flurry streaks.
+ * - AshStorm mixes swirling dark ash flakes with glowing orange-red volcanic ember cinders.
+ * - Pauses particle simulation and stops weather audio loops when the in-game ESC menu is open.
  */
 #include "engine/render/weather.h"
 
@@ -49,22 +32,16 @@ namespace devilution {
 
 namespace {
 
-// Multi-plane 3D raindrop counts for Light Rain and Heavy Rain
 constexpr size_t MaxRainDrops = 448;
 constexpr size_t LightRainDropCount = 160;
 constexpr size_t HeavyRainDropCount = 420;
 
-// Steam Fog Banks: amount reduced by 30% (13 -> 9 in Light Rain, 20 -> 14 in Heavy Rain),
-// distributed with golden-ratio vertical spread inside a 1560 x 1040 world-space domain
-// with per-bank speed variety, vertical meandering, rounder cloud morphologies, and
-// toroidal mutual repulsion so faster and slower wisps never collide or stack.
 constexpr size_t MaxSteamFogBanks = 14;
 constexpr size_t LightRainFogBankCount = 9;
 constexpr size_t HeavyRainFogBankCount = 14;
 constexpr int FogWorldWrapW = 1560;
 constexpr int FogWorldWrapH = 1040;
 
-// Minimum time player must spend in a dungeon before Tristram rain intensity can change (1 minute)
 constexpr uint32_t MinDungeonTimeForWeatherChangeMs = 60000;
 
 struct RainDrop {
@@ -82,12 +59,12 @@ struct SteamFogBank {
 	float worldY = 0.0F;
 	float phase = 0.0F;
 	float phaseSpeed = 0.50F;
-	float speedMultX = 1.0F;   // 0.65x .. 1.40x per-bank wind drift speed variety
-	float driftVelY = -4.0F;   // Individual diagonal vertical drift velocity
-	float swayAmpY = 14.0F;    // Vertical undulating wave amplitude (px/s)
-	float swayFreq = 0.35F;    // Vertical undulating frequency
-	int16_t boundRx = 88;      // Precomputed max horizontal collision radius
-	int16_t boundRy = 56;      // Precomputed max vertical collision radius
+	float speedMultX = 1.0F;
+	float driftVelY = -4.0F;
+	float swayAmpY = 14.0F;
+	float swayFreq = 0.35F;
+	int16_t boundRx = 88;
+	int16_t boundRy = 56;
 	int16_t puffRx[4] = { 42, 54, 48, 40 };
 	int16_t puffRy[4] = { 30, 38, 34, 28 };
 	int8_t puffOffX[4] = { -22, -4, 14, 24 };
@@ -102,19 +79,24 @@ struct DrawnFogRect {
 	int ry;
 };
 
+enum class TownWeatherKind : uint8_t {
+	Rain,
+	Snow,
+	AshStorm,
+};
+
 bool gWeatherInitialized = false;
 bool gHasGameRainRoll = false;
+TownWeatherKind gTownWeatherKind = TownWeatherKind::Rain;
 RainMode gCurrentRainMode = RainMode::Light;
-float gHeavyBlend = 0.0F; // 0.0 = Light Rain, 1.0 = Heavy Rain
+float gHeavyBlend = 0.0F; // 0.0 = Light, 1.0 = Heavy
 uint32_t gLastWeatherTick = 0;
 uint32_t gWeatherSimTick = 0;
 
-// Dungeon time tracking (weather intensity only changes after >= 60s in a dungeon)
 bool gInDungeon = false;
 uint32_t gDungeonEnterTick = 0;
 uint32_t gAccumulatedDungeonMs = 0;
 
-// Distant lightning palette flash state
 bool gLightningFlashActiveOnPalette = false;
 uint8_t gActiveAppliedStrength = 0;
 uint32_t gFlashStartTick = 0;
@@ -125,12 +107,10 @@ uint32_t gNextLightningTick = 0;
 uint32_t gSecondaryFlashTick = 0;
 uint8_t gPendingFlashStrength = 0;
 
-// Speed-of-sound delayed thunder audio state
 uint32_t gPendingThunderTick = 0;
 _sfx_id gPendingThunderSfx = SFX_NONE;
 int gPendingThunderVolume = 0;
 
-// Exact camera world-space pixel position (top-left of `out` surface in world pixels)
 bool gHasPrevCamPos = false;
 Point gCamWorldPixel { 0, 0 };
 int gLastViewportW = 0;
@@ -139,11 +119,6 @@ int gLastViewportH = 0;
 std::array<RainDrop, MaxRainDrops> gRainDrops;
 std::array<SteamFogBank, MaxSteamFogBanks> gSteamFogBanks;
 
-// Screen-space mask for Layer 0 (Distant Background Rain):
-// Populated in DrawWeatherBackground() and composited onto walkable ground tiles
-// inside DrawWeatherGroundTile() (after floor microtiles mt[0..1] and before roofs/walls
-// mt[2..15], solid tiles, trees, NPCs, and players) so DrawCell() never overwrites Layer 0
-// while roofs, walls, trees, rocks, and characters naturally paint over and occlude it.
 std::vector<uint16_t> gBgRainMask;
 std::vector<uint8_t> gBgRainBlockGrid;
 int gBgRainMaskW = 0;
@@ -154,10 +129,10 @@ int gBgRainBlockRows = 0;
 inline float GetLayerBaseSlant(uint8_t layer, float heavyBlend)
 {
 	if (layer == 0)
-		return -(0.12F + 0.05F * heavyBlend); // Distant background: more vertical
+		return -(0.12F + 0.05F * heavyBlend);
 	if (layer == 1)
-		return -(0.21F + 0.08F * heavyBlend); // Midground: standard wind angle
-	return -(0.31F + 0.10F * heavyBlend);     // Near-camera lens: steeper perspective slant
+		return -(0.21F + 0.08F * heavyBlend);
+	return -(0.31F + 0.10F * heavyBlend);
 }
 
 inline uint32_t FastHash(uint32_t x)
@@ -197,14 +172,14 @@ inline uint8_t Blend37(uint8_t fg, uint8_t bg)
 {
 	const uint8_t half = paletteTransparencyLookup[fg][bg];
 	const uint8_t qtr = paletteTransparencyLookup[bg][half];
-	return paletteTransparencyLookup[half][qtr]; // 37.5% fg, 62.5% bg
+	return paletteTransparencyLookup[half][qtr];
 }
 
 inline uint8_t Blend19(uint8_t fg, uint8_t bg)
 {
 	const uint8_t qtr = Blend25(fg, bg);
 	const uint8_t eighth = paletteTransparencyLookup[bg][qtr];
-	return paletteTransparencyLookup[qtr][eighth]; // 18.75% fg, 81.25% bg
+	return paletteTransparencyLookup[qtr][eighth];
 }
 
 inline uint8_t Blend12(uint8_t fg, uint8_t bg)
@@ -267,10 +242,6 @@ inline void PlotBlended12(const Surface &out, int x, int y, uint8_t fg)
 	}
 }
 
-/**
- * @brief Computes the exact world-space pixel coordinates of the top-left corner (0, 0)
- * of the viewport `out` surface.
- */
 inline Point CalcCameraWorldPixel(Point startTilePosition, Displacement offset)
 {
 	const int camX = (startTilePosition.x - startTilePosition.y) * (TILE_WIDTH / 2) - offset.deltaX;
@@ -311,11 +282,10 @@ void ApplyLightningPaletteBoost(uint8_t strength)
 
 	ApplyGamma(system_palette, logical_palette, 256);
 
-	// Strong cool-white / electric slate-blue lightning illumination across the Town palette
 	const int addR = (58 * static_cast<int>(strength)) / 100;
 	const int addG = (70 * static_cast<int>(strength)) / 100;
 	const int addB = (98 * static_cast<int>(strength)) / 100;
-	const int multNum = 256 + static_cast<int>(strength); // up to ~1.65x luminance boost
+	const int multNum = 256 + static_cast<int>(strength);
 
 	for (int i = 1; i < 255; i++) {
 		const int r = (static_cast<int>(system_palette[i].r) * multNum) >> 8;
@@ -335,20 +305,32 @@ void ApplyLightningPaletteBoost(uint8_t strength)
 void TriggerLightningStrike(uint32_t nowTick, uint8_t strength)
 {
 	gFlashStartTick = nowTick;
-	gFlashPeakEndTick = nowTick + 60;   // 60ms full peak flash (~1 classic Diablo frame)
-	gFlashTotalEndTick = nowTick + 115; // 55ms crisp afterglow decay
+	gFlashPeakEndTick = nowTick + 60;
+	gFlashTotalEndTick = nowTick + 115;
 	gFlashPeakStrength = strength;
 	ApplyLightningPaletteBoost(strength);
 }
 
 void ScheduleNextLightning(uint32_t nowTick)
 {
-	// Random interval strictly between 30 and 60 seconds (30,000 .. 60,000 ms)
 	gNextLightningTick = nowTick + 30000U + static_cast<uint32_t>(GenerateRnd(30001));
 }
 
 void RollRainIntensity()
 {
+	// On the first roll of a New Game session (!gHasGameRainRoll), roll with equal probability
+	// (1/3 each) between Rain, Snow, and Ash Storm. Whichever rolls stays locked for the entire
+	// game session; subsequent calls (after >= 60s in a dungeon) only roll Light vs Heavy intensity!
+	if (!gHasGameRainRoll) {
+		const int kindRoll = GenerateRnd(3);
+		if (kindRoll == 0) {
+			gTownWeatherKind = TownWeatherKind::Rain;
+		} else if (kindRoll == 1) {
+			gTownWeatherKind = TownWeatherKind::Snow;
+		} else {
+			gTownWeatherKind = TownWeatherKind::AshStorm;
+		}
+	}
 	gCurrentRainMode = (GenerateRnd(100) < 50) ? RainMode::Light : RainMode::Heavy;
 	gHeavyBlend = (gCurrentRainMode == RainMode::Heavy) ? 1.0F : 0.0F;
 	gHasGameRainRoll = true;
@@ -364,68 +346,57 @@ void InitRainDrop(RainDrop &drop, int viewW, int viewH, bool randomY)
 
 	const int roll = GenerateRnd(100);
 	if (roll < 42) {
-		// Layer 0: Distant background rain (+5% transparency: softer shade + shorter 33% head blend)
 		drop.layer = 0;
 		drop.parallaxScale = 0.58F;
 		drop.speedScale = 0.55F + static_cast<float>(GenerateRnd(18)) * 0.01F;
-		drop.length = static_cast<uint8_t>(9 + GenerateRnd(5)); // 9..13 px
+		drop.length = static_cast<uint8_t>(9 + GenerateRnd(5));
 		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 3 + GenerateRnd(2));
 	} else if (roll < 84) {
-		// Layer 1: Midground world-plane air rain (+15% transparency: softer shade + 50%/37.5%/25% blend)
 		drop.layer = 1;
 		drop.parallaxScale = 1.00F;
 		drop.speedScale = 0.95F + static_cast<float>(GenerateRnd(24)) * 0.01F;
-		drop.length = static_cast<uint8_t>(17 + GenerateRnd(8)); // 17..24 px
+		drop.length = static_cast<uint8_t>(17 + GenerateRnd(8));
 		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_BLUE : PAL16_GRAY) + 2 + GenerateRnd(2));
 	} else {
-		// Layer 2: Near-camera foreground "lens" rain (+35% transparency: softer shade + 50%/37.5%/25%/18.75% DoF blur)
 		drop.layer = 2;
 		drop.parallaxScale = 1.65F;
 		drop.speedScale = 1.65F + static_cast<float>(GenerateRnd(50)) * 0.01F;
-		drop.length = static_cast<uint8_t>(34 + GenerateRnd(15)); // 34..48 px
+		drop.length = static_cast<uint8_t>(34 + GenerateRnd(15));
 		drop.colorIndex = static_cast<uint8_t>((GenerateRnd(2) == 0 ? PAL16_GRAY : PAL16_BLUE) + 2 + GenerateRnd(2));
 	}
 }
 
 void InitSteamFogBank(SteamFogBank &bank, size_t index)
 {
-	// Distribute across 14 unique vertical & horizontal altitudes using a low-discrepancy
-	// Halton/Golden-Ratio sequence so fog wisps never line up on 2 horizontal rows:
 	const int slotX = static_cast<int>((index * 5U + 2U) % MaxSteamFogBanks);
 	const int slotY = static_cast<int>((index * 9U + 3U) % MaxSteamFogBanks);
-	const int stepX = FogWorldWrapW / static_cast<int>(MaxSteamFogBanks); // ~111 px per X band
-	const int stepY = FogWorldWrapH / static_cast<int>(MaxSteamFogBanks); // ~74 px per Y band (14 distinct Y altitudes!)
+	const int stepX = FogWorldWrapW / static_cast<int>(MaxSteamFogBanks);
+	const int stepY = FogWorldWrapH / static_cast<int>(MaxSteamFogBanks);
 
 	bank.worldX = static_cast<float>((slotX * stepX + GenerateRnd(std::max(1, stepX))) % FogWorldWrapW);
 	bank.worldY = static_cast<float>((slotY * stepY + GenerateRnd(std::max(1, stepY))) % FogWorldWrapH);
 	bank.phase = static_cast<float>(GenerateRnd(628)) * 0.01F;
 	bank.phaseSpeed = 0.42F + static_cast<float>(GenerateRnd(48)) * 0.01F;
 
-	// Per-bank speed variety (0.64x .. 1.42x) + varied vertical drift & sinusoidal vertical meandering
 	bank.speedMultX = 0.64F + static_cast<float>(GenerateRnd(79)) * 0.01F;
-	bank.driftVelY = -9.5F + static_cast<float>(GenerateRnd(165)) * 0.1F; // -9.5 .. +6.9 px/s vertical drift
-	bank.swayAmpY = 10.0F + static_cast<float>(GenerateRnd(140)) * 0.1F;  // 10.0 .. 23.9 px/s vertical wave
+	bank.driftVelY = -9.5F + static_cast<float>(GenerateRnd(165)) * 0.1F;
+	bank.swayAmpY = 10.0F + static_cast<float>(GenerateRnd(140)) * 0.1F;
 	bank.swayFreq = 0.26F + static_cast<float>(GenerateRnd(32)) * 0.01F;
 
-	// Morphology variety: allow rounder, billowy cumulus-like vapor puffs alongside soft ovals
 	const int shapeRoll = GenerateRnd(100);
 	int baseRx = 48;
 	int baseRy = 34;
 	if (shapeRoll < 48) {
-		// Rounder, billowy cloud cluster (aspect ~1.12:1 to 1.38:1)
-		baseRx = 38 + GenerateRnd(17); // 38..54 px
-		baseRy = 29 + GenerateRnd(14); // 29..42 px
+		baseRx = 38 + GenerateRnd(17);
+		baseRy = 29 + GenerateRnd(14);
 	} else if (shapeRoll < 82) {
-		// Balanced tumbled oval cloud (aspect ~1.45:1 to 1.75:1)
-		baseRx = 46 + GenerateRnd(19); // 46..64 px
-		baseRy = 26 + GenerateRnd(12); // 26..37 px
+		baseRx = 46 + GenerateRnd(19);
+		baseRy = 26 + GenerateRnd(12);
 	} else {
-		// Gently sheared drifting wisp (still much fuller vertically than before: ry 22..31)
-		baseRx = 54 + GenerateRnd(20); // 54..73 px
-		baseRy = 22 + GenerateRnd(10); // 22..31 px
+		baseRx = 54 + GenerateRnd(20);
+		baseRy = 22 + GenerateRnd(10);
 	}
 
-	// Arrange 4 overlapping puffs in a 2D cluster (top, bottom, left, right lobes) rather than a flat line
 	const int spreadX = (baseRx * 42) / 100;
 	const int spreadY = (baseRy * 38) / 100;
 
@@ -459,29 +430,64 @@ void InitSteamFogBank(SteamFogBank &bank, size_t index)
 	bank.colorIndex = static_cast<uint8_t>((coolTint ? PAL16_BLUE : PAL16_GRAY) + 6 + GenerateRnd(2));
 }
 
+void StopAllTownWeatherLoops()
+{
+	StopSFX(LS_RAINLIGHT);
+	StopSFX(LS_RAINHEAVY);
+	StopSFX(LS_SNOWLIGHT);
+	StopSFX(LS_SNOWHEAVY);
+	StopSFX(LS_ASHSTORMLIGHT);
+	StopSFX(LS_ASHSTORMHEAVY);
+}
+
 void SyncWeatherAudio()
 {
 	const bool isMenuPaused = (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active()));
 	if (!gbRunGame || !gbSoundOn || isMenuPaused || leveltype != DTYPE_TOWN || setlevel) {
-		StopSFX(LS_RAINLIGHT);
-		StopSFX(LS_RAINHEAVY);
+		StopAllTownWeatherLoops();
 		return;
 	}
 
-	if (gHeavyBlend >= 0.5F) {
+	const bool isHeavy = (gHeavyBlend >= 0.5F);
+	if (gTownWeatherKind == TownWeatherKind::Rain) {
+		StopSFX(LS_SNOWLIGHT);
+		StopSFX(LS_SNOWHEAVY);
+		StopSFX(LS_ASHSTORMLIGHT);
+		StopSFX(LS_ASHSTORMHEAVY);
+		if (isHeavy) {
+			StopSFX(LS_RAINLIGHT);
+			PlayLoopingSFX(LS_RAINHEAVY, -200);
+		} else {
+			StopSFX(LS_RAINHEAVY);
+			PlayLoopingSFX(LS_RAINLIGHT, -300);
+		}
+	} else if (gTownWeatherKind == TownWeatherKind::Snow) {
 		StopSFX(LS_RAINLIGHT);
-		PlayLoopingSFX(LS_RAINHEAVY, -200);
-	} else {
 		StopSFX(LS_RAINHEAVY);
-		PlayLoopingSFX(LS_RAINLIGHT, -300);
+		StopSFX(LS_ASHSTORMLIGHT);
+		StopSFX(LS_ASHSTORMHEAVY);
+		if (isHeavy) {
+			StopSFX(LS_SNOWLIGHT);
+			PlayLoopingSFX(LS_SNOWHEAVY, -200);
+		} else {
+			StopSFX(LS_SNOWHEAVY);
+			PlayLoopingSFX(LS_SNOWLIGHT, -300);
+		}
+	} else {
+		StopSFX(LS_RAINLIGHT);
+		StopSFX(LS_RAINHEAVY);
+		StopSFX(LS_SNOWLIGHT);
+		StopSFX(LS_SNOWHEAVY);
+		if (isHeavy) {
+			StopSFX(LS_ASHSTORMLIGHT);
+			PlayLoopingSFX(LS_ASHSTORMHEAVY, -200);
+		} else {
+			StopSFX(LS_ASHSTORMHEAVY);
+			PlayLoopingSFX(LS_ASHSTORMLIGHT, -300);
+		}
 	}
 }
 
-/**
- * @brief Renders a single localized ground puddle splash with:
- * - Average size reduced by 50% (max radius rx=5..6, ry=2..3)
- * - +50% transparency (50% / 25% / 12.5% LUT blending so splashes integrate naturally with ground)
- */
 void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uint8_t variant)
 {
 	if (center.x < -10 || center.x >= out.w() + 10 || center.y < -10 || center.y >= out.h() + 10)
@@ -494,7 +500,6 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 
 	switch (stage) {
 	case 0: {
-		// Stage 0: Compact semi-transparent impact bead (rx=1, ry=0) + 2 tiny crown droplets
 		PlotBlended50(out, center.x, center.y, specCol);
 		PlotBlended25(out, center.x - 1, center.y, brightCol);
 		PlotBlended25(out, center.x + 1, center.y, brightCol);
@@ -503,7 +508,6 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 		break;
 	}
 	case 1: {
-		// Stage 1: Compact 2:1 isometric inner ring (rx=2, ry=1)
 		PlotBlended50(out, center.x - 1, center.y - 1, specCol);
 		PlotBlended50(out, center.x, center.y - 1, specCol);
 		PlotBlended50(out, center.x + 1, center.y - 1, specCol);
@@ -517,7 +521,6 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 		break;
 	}
 	case 2: {
-		// Stage 2: Expanding 2:1 isometric ripple (rx=3..4, ry=1..2)
 		const int rx = 3 + static_cast<int>(variant & 1);
 		PlotBlended50(out, center.x - 1, center.y - 1, brightCol);
 		PlotBlended25(out, center.x, center.y - 2, brightCol);
@@ -534,7 +537,6 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 		break;
 	}
 	case 3: {
-		// Stage 3: Soft semi-transparent isometric ripple (rx=4..5, ry=2)
 		const int rx = 4 + static_cast<int>(variant & 1);
 		PlotBlended25(out, center.x - 2, center.y - 2, midCol);
 		PlotBlended25(out, center.x, center.y - 2, brightCol);
@@ -554,7 +556,6 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 		break;
 	}
 	default: {
-		// Stage 4: Dissipating outer ring (rx=5..6, ry=2..3) at 12.5%..25% opacity
 		const int rx = 5 + static_cast<int>(variant & 1);
 		const int ry = 2 + static_cast<int>(variant & 1);
 		PlotBlended25(out, center.x - 2, center.y - ry, ringCol);
@@ -574,11 +575,45 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 	}
 }
 
-/**
- * @brief Renders a curling ground-evaporation steam wisp rising off a walkable outdoor tile:
- * - Size reduced by 35% (riseY=18px, rx=1..4px, ry=1..2px)
- * - Transparency increased by 50% (12.5% Blend12 core + 6.25% Blend6 feather halo)
- */
+void DrawSingleSettlingSnowFlake(const Surface &out, Point center, uint8_t stage, uint8_t variant)
+{
+	if (center.x < -6 || center.x >= out.w() + 6 || center.y < -6 || center.y >= out.h() + 6)
+		return;
+
+	const bool isAshMode = (gTownWeatherKind == TownWeatherKind::AshStorm);
+	const bool isEmber = isAshMode && ((variant & 7U) == 0U);
+	const uint8_t brightCol = isEmber
+	    ? static_cast<uint8_t>(PAL16_ORANGE + 3 + (variant & 1U))
+	    : (isAshMode
+	            ? static_cast<uint8_t>(PAL16_GRAY + 6 + (variant & 1U))
+	            : static_cast<uint8_t>(PAL16_GRAY + 1 + (variant & 1U)));
+	const uint8_t softCol = isEmber
+	    ? static_cast<uint8_t>(PAL16_RED + 5 + (variant & 1U))
+	    : (isAshMode
+	            ? static_cast<uint8_t>(PAL16_GRAY + 9 + (variant & 1U))
+	            : static_cast<uint8_t>(PAL16_BLUE + 3 + (variant & 1U)));
+
+	switch (stage) {
+	case 0:
+	case 1:
+		PlotBlended50(out, center.x, center.y, brightCol);
+		PlotBlended25(out, center.x - 1, center.y, softCol);
+		PlotBlended25(out, center.x + 1, center.y, softCol);
+		PlotBlended19(out, center.x, center.y - 1, softCol);
+		break;
+	case 2:
+	case 3:
+		PlotBlended37(out, center.x, center.y, brightCol);
+		PlotBlended19(out, center.x - 1, center.y, softCol);
+		PlotBlended19(out, center.x + 1, center.y, softCol);
+		break;
+	default:
+		PlotBlended19(out, center.x, center.y, softCol);
+		PlotBlended12(out, center.x + 1, center.y, softCol);
+		break;
+	}
+}
+
 void DrawGroundSteamWisp(const Surface &out, Point basePos, uint32_t progressPermille, uint8_t variant)
 {
 	if (basePos.x < -24 || basePos.x >= out.w() + 24 || basePos.y < -8 || basePos.y >= out.h() + 24)
@@ -588,13 +623,12 @@ void DrawGroundSteamWisp(const Surface &out, Point basePos, uint32_t progressPer
 	const uint8_t haloCol = static_cast<uint8_t>(((variant & 2) != 0 ? PAL16_BLUE : PAL16_GRAY) + 3 + (variant & 1));
 	const float phaseBase = static_cast<float>(variant) * 0.85F + static_cast<float>(progressPermille) * 0.00628F;
 
-	// Render 5 staggered vapor puffs along an ascending, wind-curled plume (-35% size)
 	for (int p = 0; p < 5; ++p) {
 		const int puffProgress = static_cast<int>(progressPermille) - p * 120;
 		if (puffProgress <= 0 || puffProgress >= 880)
 			continue;
 
-		const float t = static_cast<float>(puffProgress) / 880.0F; // 0.0 -> 1.0 as puff rises
+		const float t = static_cast<float>(puffProgress) / 880.0F;
 		const float swayX = std::sin(phaseBase + t * 4.2F) * (2.2F + t * 2.9F) - t * 7.1F;
 		const float riseY = -t * 18.2F;
 
@@ -636,12 +670,6 @@ void DrawGroundSteamWisp(const Surface &out, Point basePos, uint32_t progressPer
 	}
 }
 
-/**
- * @brief Renders a single world-anchored multi-puff Steam Fog Bank at screen center (screenCx, screenCy):
- * - +20% larger size
- * - +35% higher transparency (12.5% Blend12 inner core + 6.25% Blend6 outer feather)
- * - Strictly non-overlapping against all previously drawn banks in `drawnRects`
- */
 void DrawSingleSteamFogBank(
     const Surface &out,
     const SteamFogBank &bank,
@@ -689,7 +717,6 @@ void DrawSingleSteamFogBank(
 	const int bankRx = std::max(16, (rawMaxX - rawMinX) / 2);
 	const int bankRy = std::max(14, (rawMaxY - rawMinY) / 2);
 
-	// Elliptical screen-space safety check against any already-drawn Steam Fog Bank
 	for (size_t r = 0; r < drawnCount; ++r) {
 		const float dx = static_cast<float>(bankCx - drawnRects[r].cx);
 		const float dy = static_cast<float>(bankCy - drawnRects[r].cy);
@@ -704,14 +731,13 @@ void DrawSingleSteamFogBank(
 	}
 
 	const float pulse = 0.85F + 0.15F * std::sin(bank.phase);
-	const int coreCutoff = static_cast<int>(64.0F * pulse); // Soft inner core cutoff (out of 256)
+	const int coreCutoff = static_cast<int>(64.0F * pulse);
 
 	for (int y = minY; y <= maxY; ++y) {
 		for (int x = minX; x <= maxX; ++x) {
 			const int waveOffsetY = (((x - screenCx) * 3 + (y - screenCy) * 2) >> 5) & 1;
 			const int wy = y + waveOffsetY;
 
-			// Smooth metaball-style union of the 4 rounded cloud puffs so their lobes blend into organic round clouds
 			int minD2 = 256;
 			int secondMinD2 = 256;
 			for (int i = 0; i < 4; ++i) {
@@ -729,7 +755,6 @@ void DrawSingleSteamFogBank(
 				}
 			}
 
-			// Smooth bridge between overlapping round puffs
 			if (secondMinD2 < 256) {
 				minD2 = std::max(0, minD2 - ((256 - secondMinD2) >> 3));
 			}
@@ -737,7 +762,6 @@ void DrawSingleSteamFogBank(
 			if (minD2 >= 256)
 				continue;
 
-			// +35% increased transparency (contiguous scanline-free 12.5% core + 6.25% feather):
 			uint8_t &px = out[{ x, y }];
 			if (minD2 < coreCutoff) {
 				px = Blend12(bank.colorIndex, px);
@@ -753,6 +777,8 @@ void DrawSingleSteamFogBank(
 void OnWeatherNewGame()
 {
 	ResetWeatherState();
+	StopSFX(LS_LAVABUBBLES);
+	StopSFX(LS_INSECTBUZZ);
 	gHasGameRainRoll = false;
 	gWeatherInitialized = false;
 	gInDungeon = false;
@@ -773,10 +799,9 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 	}
 
 	if (levelType != DTYPE_TOWN || setlevel) {
-		// Entering or changing levels inside a dungeon: stop weather audio & flash immediately
+		// Entering or changing levels inside a dungeon: stop Town weather audio & flash immediately
 		RestoreNormalTownPalette();
-		StopSFX(LS_RAINLIGHT);
-		StopSFX(LS_RAINHEAVY);
+		StopAllTownWeatherLoops();
 		StopSFX(LS_THUNDERA);
 		StopSFX(LS_THUNDERB);
 		gHasPrevCamPos = false;
@@ -788,7 +813,9 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 			gDungeonEnterTick = nowTick;
 		}
 	} else {
-		// Returning to Tristram: only allow rain intensity to change if player spent >= 1 minute in a dungeon
+		// Returning to Tristram: only allow intensity (Light vs Heavy) to change if player spent >= 1 minute in a dungeon
+		StopSFX(LS_LAVABUBBLES);
+		StopSFX(LS_INSECTBUZZ);
 		if (gInDungeon) {
 			gAccumulatedDungeonMs += (nowTick - gDungeonEnterTick);
 			gInDungeon = false;
@@ -805,12 +832,12 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 
 void ResetWeatherState()
 {
+	// NOTE: UpdateWeatherState() calls ResetWeatherState() on EVERY FRAME when in a dungeon (leveltype != DTYPE_TOWN)!
+	// Never stop dungeon loops (LS_LAVABUBBLES / LS_INSECTBUZZ) here, or they will be killed every frame!
 	RestoreNormalTownPalette();
-	StopSFX(LS_RAINLIGHT);
-	StopSFX(LS_RAINHEAVY);
+	StopAllTownWeatherLoops();
 	StopSFX(LS_THUNDERA);
 	StopSFX(LS_THUNDERB);
-	StopSFX(LS_LAVABUBBLES);
 	gHasPrevCamPos = false;
 	gSecondaryFlashTick = 0;
 	gPendingThunderTick = 0;
@@ -850,7 +877,6 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		}
 	}
 
-	// Update active lightning flash envelope (60ms peak flash + 55ms afterglow decay)
 	if (gLightningFlashActiveOnPalette) {
 		if (nowTick >= gFlashTotalEndTick) {
 			RestoreNormalTownPalette();
@@ -874,45 +900,43 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	gWeatherSimTick += dtMs;
 	const float dt = static_cast<float>(dtMs) * 0.001F;
 
-	// Keep gHeavyBlend locked to the session's active gCurrentRainMode
 	gHeavyBlend = (gCurrentRainMode == RainMode::Heavy) ? 1.0F : 0.0F;
 
-	// Trigger speed-of-sound delayed thunder clap when its acoustic timer arrives
-	if (gPendingThunderTick != 0 && nowTick >= gPendingThunderTick) {
-		gPendingThunderTick = 0;
-		PlayWeatherSFX(gPendingThunderSfx, gPendingThunderVolume);
-	}
-
-	// Trigger distant lightning flashes (every 30-60s) and schedule speed-of-sound delayed thunder
-	if (gSecondaryFlashTick != 0 && nowTick >= gSecondaryFlashTick) {
-		gSecondaryFlashTick = 0;
-		TriggerLightningStrike(nowTick, gPendingFlashStrength);
-	} else if (nowTick >= gNextLightningTick) {
-		const bool isHeavy = (gHeavyBlend >= 0.5F);
-		const uint8_t flashStrength = isHeavy
-		    ? static_cast<uint8_t>(135 + GenerateRnd(36))
-		    : static_cast<uint8_t>(100 + GenerateRnd(31));
-		TriggerLightningStrike(nowTick, flashStrength);
-
-		if (isHeavy) {
-			gPendingThunderSfx = LS_THUNDERB;
-			gPendingThunderTick = nowTick + 608 + static_cast<uint32_t>(GenerateRnd(608));
-			gPendingThunderVolume = -80;
-		} else {
-			gPendingThunderSfx = LS_THUNDERA;
-			gPendingThunderTick = nowTick + 1553 + static_cast<uint32_t>(GenerateRnd(945));
-			gPendingThunderVolume = -180;
+	if (gTownWeatherKind == TownWeatherKind::Rain) {
+		if (gPendingThunderTick != 0 && nowTick >= gPendingThunderTick) {
+			gPendingThunderTick = 0;
+			PlayWeatherSFX(gPendingThunderSfx, gPendingThunderVolume);
 		}
 
-		const int doubleStrikeChance = isHeavy ? 50 : 25;
-		if (GenerateRnd(100) < doubleStrikeChance) {
-			gSecondaryFlashTick = nowTick + 125 + static_cast<uint32_t>(GenerateRnd(45));
-			gPendingFlashStrength = static_cast<uint8_t>((static_cast<uint32_t>(flashStrength) * 80U) / 100U);
+		if (gSecondaryFlashTick != 0 && nowTick >= gSecondaryFlashTick) {
+			gSecondaryFlashTick = 0;
+			TriggerLightningStrike(nowTick, gPendingFlashStrength);
+		} else if (nowTick >= gNextLightningTick) {
+			const bool isHeavy = (gHeavyBlend >= 0.5F);
+			const uint8_t flashStrength = isHeavy
+			    ? static_cast<uint8_t>(135 + GenerateRnd(36))
+			    : static_cast<uint8_t>(100 + GenerateRnd(31));
+			TriggerLightningStrike(nowTick, flashStrength);
+
+			if (isHeavy) {
+				gPendingThunderSfx = LS_THUNDERB;
+				gPendingThunderTick = nowTick + 608 + static_cast<uint32_t>(GenerateRnd(608));
+				gPendingThunderVolume = -80;
+			} else {
+				gPendingThunderSfx = LS_THUNDERA;
+				gPendingThunderTick = nowTick + 1553 + static_cast<uint32_t>(GenerateRnd(945));
+				gPendingThunderVolume = -180;
+			}
+
+			const int doubleStrikeChance = isHeavy ? 50 : 25;
+			if (GenerateRnd(100) < doubleStrikeChance) {
+				gSecondaryFlashTick = nowTick + 125 + static_cast<uint32_t>(GenerateRnd(45));
+				gPendingFlashStrength = static_cast<uint8_t>((static_cast<uint32_t>(flashStrength) * 80U) / 100U);
+			}
+			ScheduleNextLightning(nowTick);
 		}
-		ScheduleNextLightning(nowTick);
 	}
 
-	// Compute exact camera world-space pixel position so world-space fog and rain never move with the camera
 	const Point newCamWorldPixel = CalcCameraWorldPixel(startTilePosition, offset);
 	int camDeltaX = 0;
 	int camDeltaY = 0;
@@ -927,9 +951,6 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	gCamWorldPixel = newCamWorldPixel;
 	gHasPrevCamPos = true;
 
-	// Update world-space drifting precipitation / steam fog banks with per-bank speed variety,
-	// organic vertical meandering, and toroidal elliptical collision-avoidance steering
-	// so faster and slower wisps smoothly pass around each other without colliding.
 	const float baseFogWindX = -(15.0F + 11.0F * gHeavyBlend);
 	const float wrapW = static_cast<float>(FogWorldWrapW);
 	const float wrapH = static_cast<float>(FogWorldWrapH);
@@ -950,9 +971,6 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		bank.worldY += (bank.driftVelY + waveVelY) * dt;
 	}
 
-	// Toroidal collision-avoidance solver (2 relaxation passes):
-	// When a faster bank approaches a slower bank, smoothly steer them apart vertically
-	// and horizontally before their cloud radii can touch.
 	for (int pass = 0; pass < 2; ++pass) {
 		for (size_t i = 0; i < gSteamFogBanks.size(); ++i) {
 			for (size_t j = i + 1; j < gSteamFogBanks.size(); ++j) {
@@ -971,7 +989,6 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 				else if (dy < -halfH)
 					dy += wrapH;
 
-				// Comfort buffer (+26 px X, +24 px Y) so wisps steer around one another smoothly
 				const float minSepX = static_cast<float>(a.boundRx + b.boundRx + 26);
 				const float minSepY = static_cast<float>(a.boundRy + b.boundRy + 24);
 				const float nx = dx / minSepX;
@@ -979,11 +996,10 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 				const float distSq = nx * nx + ny * ny;
 
 				if (distSq < 1.0F) {
-					const float dist = std::sqrt( std::max(0.0001F, distSq) );
+					const float dist = std::sqrt(std::max(0.0001F, distSq));
 					const float overlap = 1.0F - dist;
 					float dirX = nx / dist;
 					float dirY = ny / dist;
-					// Bias vertical steering so horizontally overtaking wisps glide above/below each other
 					if (std::abs(dirY) < 0.35F) {
 						dirY = (dirY >= 0.0F) ? 0.55F : -0.55F;
 					}
@@ -1013,9 +1029,17 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		}
 	}
 
-	// Per-layer fall velocity and slant-matched horizontal wind velocity so each depth
-	// plane moves strictly along its own perspective streak angle
-	const float fallVelY = 510.0F + 230.0F * gHeavyBlend;
+	const bool isSnow = (gTownWeatherKind == TownWeatherKind::Snow);
+	const bool isAsh = (gTownWeatherKind == TownWeatherKind::AshStorm);
+	float fallVelY = 510.0F + 230.0F * gHeavyBlend;
+	if (isSnow) {
+		fallVelY = 74.0F + 142.0F * gHeavyBlend; // 74 px/s in SnowLight -> 216 px/s in SnowHeavy blizzard!
+	} else if (isAsh) {
+		fallVelY = 68.0F + 88.0F * gHeavyBlend;  // 68 px/s in AshStormLight -> 156 px/s in AshStormHeavy
+	}
+
+	const float simSec = static_cast<float>(gWeatherSimTick) * 0.001F;
+	const float stormGust = std::sin(simSec * 1.45F) * 0.5F + std::cos(simSec * 0.62F) * 0.5F;
 	const int marginX = 144;
 	const float minX = -static_cast<float>(marginX);
 	const float maxX = static_cast<float>(viewW + marginX);
@@ -1028,9 +1052,21 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		RainDrop &drop = gRainDrops[i];
 		const float pScale = drop.parallaxScale;
-		const float layerSlant = GetLayerBaseSlant(drop.layer, gHeavyBlend);
 		const float dropFallVel = fallVelY * drop.speedScale;
-		const float dropWindVel = dropFallVel * layerSlant;
+		float dropWindVel = 0.0F;
+		if (isSnow) {
+			const float flutterAmp = (16.0F + 20.0F * gHeavyBlend) * pScale;
+			const float flutter = std::sin(simSec * (2.2F + drop.speedScale * (1.0F + gHeavyBlend)) + static_cast<float>(i) * 0.77F) * flutterAmp;
+			const float baseSnowWind = -(18.0F + 108.0F * gHeavyBlend + stormGust * 28.0F * gHeavyBlend) * pScale;
+			dropWindVel = baseSnowWind + flutter;
+		} else if (isAsh) {
+			const float eddy = std::sin(simSec * (1.8F + drop.speedScale) + static_cast<float>(i) * 0.91F) * (22.0F + 18.0F * gHeavyBlend) * pScale;
+			const float baseAshWind = -(24.0F + 72.0F * gHeavyBlend + stormGust * 22.0F * gHeavyBlend) * pScale;
+			dropWindVel = baseAshWind + eddy;
+		} else {
+			const float layerSlant = GetLayerBaseSlant(drop.layer, gHeavyBlend);
+			dropWindVel = dropFallVel * layerSlant;
+		}
 
 		drop.x += dropWindVel * dt - static_cast<float>(camDeltaX) * pScale;
 		drop.y += dropFallVel * dt - static_cast<float>(camDeltaY) * pScale;
@@ -1059,7 +1095,6 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 	if (!IsOutdoorWalkableGround(tilePosition))
 		return;
 
-	// Center of the 64x32 isometric ground diamond in `out` buffer coordinates
 	const int tileCenterX = targetBufferPosition.x + TILE_WIDTH / 2;
 	const int tileCenterY = targetBufferPosition.y - TILE_HEIGHT / 2;
 	if (tileCenterX < -32 || tileCenterX >= out.w() + 32 || tileCenterY < -16 || tileCenterY >= out.h() + 32)
@@ -1067,7 +1102,6 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 
 	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
 
-	// 1. Render localized puddle splash animations (-35% count, -50% size, +50% transparency)
 	const uint32_t tileSeed = FastHash(
 	    static_cast<uint32_t>(tilePosition.x) * 73856093U
 	    ^ static_cast<uint32_t>(tilePosition.y) * 19349663U);
@@ -1092,13 +1126,16 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 
 		const int subX = static_cast<int>((epochHash >> 10) % 33U) - 16;
 		const int subY = static_cast<int>((epochHash >> 16) % 15U) - 7;
-		const uint8_t variant = static_cast<uint8_t>((epochHash >> 22) & 1U);
+		const uint8_t variant = static_cast<uint8_t>((epochHash >> 22) & 7U);
 		const uint8_t stage = static_cast<uint8_t>(std::min<uint32_t>(4U, (localMs * 5U) / SplashAnimDurationMs));
 
-		DrawSinglePuddleSplash(out, Point { tileCenterX + subX, tileCenterY + subY }, stage, variant);
+		if (gTownWeatherKind != TownWeatherKind::Rain) {
+			DrawSingleSettlingSnowFlake(out, Point { tileCenterX + subX, tileCenterY + subY }, stage, variant);
+		} else {
+			DrawSinglePuddleSplash(out, Point { tileCenterX + subX, tileCenterY + subY }, stage, variant & 1U);
+		}
 	}
 
-	// 2. Render curling rising ground-evaporation steam wisps (-40% count, -35% size, +50% transparency)
 	if ((tileSeed % 100U) < 19U) {
 		constexpr uint32_t SteamCycleMs = 2600U;
 		const uint32_t shiftedSteamTick = nowTick + (tileSeed % SteamCycleMs);
@@ -1117,10 +1154,6 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 		}
 	}
 
-	// 3. Composite Layer 0 (Distant Background Rain) onto this walkable ground tile's 64x32
-	// isometric diamond right after floor microtiles mt[0..1] (and LeftFoliage/RightFoliage)
-	// have finished, and BEFORE upper microtiles mt[2..15] (roofs, walls, arches), solid tiles,
-	// trees (dSpecial), objects, NPCs, and players are drawn on top.
 	if (gBgRainMaskW == out.w() && gBgRainMaskH == out.h() && !gBgRainMask.empty()) {
 		const int boxLeft = std::max(0, targetBufferPosition.x);
 		const int boxRight = std::min(gBgRainMaskW - 1, targetBufferPosition.x + TILE_WIDTH - 1);
@@ -1157,7 +1190,7 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 						const uint16_t packed = maskRow[px];
 						if (packed == 0)
 							continue;
-						maskRow[px] = 0; // Consume so adjacent diamond overlap never double-blends
+						maskRow[px] = 0;
 						const uint8_t col = static_cast<uint8_t>(packed & 0xFFU);
 						const uint8_t blendMode = static_cast<uint8_t>(packed >> 8U);
 						uint8_t &dstPx = out[{ px, py }];
@@ -1196,13 +1229,13 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 	    static_cast<float>(LightRainDropCount)
 	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
 
-	const uint32_t nowTick = gLastWeatherTick != 0 ? gLastWeatherTick : SDL_GetTicks();
+	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
+	const bool isSnow = (gTownWeatherKind == TownWeatherKind::Snow);
+	const bool isAsh = (gTownWeatherKind == TownWeatherKind::AshStorm);
 	const float gustPhase = static_cast<float>(nowTick) * 0.0025F;
 	const float baseSlant = GetLayerBaseSlant(0, gHeavyBlend);
 	const int extraLen = static_cast<int>(3.0F * gHeavyBlend);
 
-	// Rasterize Layer 0 (Distant Background Rain) into gBgRainMask so DrawWeatherGroundTile()
-	// composites it onto walkable ground after mt[0..1] and before roofs/walls/trees/NPCs.
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		const RainDrop &drop = gRainDrops[i];
 		if (drop.layer != 0)
@@ -1210,6 +1243,26 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 
 		const int headX = static_cast<int>(drop.x);
 		const int headY = static_cast<int>(drop.y);
+
+		if (isSnow || isAsh) {
+			if (headY < 2 || headY >= viewH - 2 || headX < 2 || headX >= viewW - 2)
+				continue;
+			const bool isEmber = isAsh && ((i & 15U) == 0U);
+			const uint8_t flakeCol = isEmber
+			    ? static_cast<uint8_t>(PAL16_ORANGE + 3 + (i & 1U))
+			    : (isAsh
+			            ? static_cast<uint8_t>(PAL16_GRAY + 6 + (i & 3U))
+			            : static_cast<uint8_t>(PAL16_GRAY + 1 + (i & 1U)));
+			gBgRainMask[headY * viewW + headX] = static_cast<uint16_t>((2U << 8U) | flakeCol);
+			gBgRainBlockGrid[(headY >> 4) * gBgRainBlockCols + (headX >> 5)] = 1;
+			if (isSnow && gHeavyBlend >= 0.5F && headX + 1 < viewW && headY - 1 >= 0) {
+				gBgRainMask[(headY - 1) * viewW + (headX + 1)] = static_cast<uint16_t>((1U << 8U) | flakeCol);
+			} else if (((i + (nowTick >> 8)) & 1U) == 0U) {
+				gBgRainMask[headY * viewW + (headX + 1)] = static_cast<uint16_t>((1U << 8U) | flakeCol);
+			}
+			continue;
+		}
+
 		const int totalLen = static_cast<int>(drop.length) + extraLen;
 
 		if (headY < 0 || headY - totalLen >= viewH || headX < -24 || headX >= viewW + 24)
@@ -1224,7 +1277,7 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 			if (px < 0 || px >= viewW || py < 0 || py >= viewH)
 				continue;
 
-			const uint16_t blendMode = (step * 3 < totalLen) ? 2U : 1U; // +5% transparency: 37.5% head (top 33%), 25% tail
+			const uint16_t blendMode = (step * 3 < totalLen) ? 2U : 1U;
 			gBgRainMask[py * viewW + px] = static_cast<uint16_t>((blendMode << 8U) | drop.colorIndex);
 			gBgRainBlockGrid[(py >> 4) * gBgRainBlockCols + (px >> 5)] = 1;
 		}
@@ -1237,7 +1290,6 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		return;
 	}
 
-	// 1. Render non-overlapping world-anchored drifting precipitation / steam fog banks
 	const Point camWorld = CalcCameraWorldPixel(startTilePosition, offset);
 	const size_t activeFogBanks = static_cast<size_t>(
 	    static_cast<float>(LightRainFogBankCount)
@@ -1260,14 +1312,14 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		}
 	}
 
-	// 2. Render Layer 1 (Midground Air Rain) and Layer 2 (Near-Camera DoF Foreground Rain)
-	// Note: Layer 0 was already composited onto walkable ground behind roofs/trees/walls
-	// in DrawWeatherGroundTile(), and all puddle splashes remain strictly on walkable ground.
 	const size_t activeDropCount = static_cast<size_t>(
 	    static_cast<float>(LightRainDropCount)
 	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
 
-	const uint32_t nowTick = gLastWeatherTick != 0 ? gLastWeatherTick : SDL_GetTicks();
+	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
+	const bool isSnow = (gTownWeatherKind == TownWeatherKind::Snow);
+	const bool isAsh = (gTownWeatherKind == TownWeatherKind::AshStorm);
+	const bool isHeavy = (gHeavyBlend >= 0.5F);
 	const float gustPhase = static_cast<float>(nowTick) * 0.0032F;
 	const float slant1 = GetLayerBaseSlant(1, gHeavyBlend);
 	const float slant2 = GetLayerBaseSlant(2, gHeavyBlend);
@@ -1277,10 +1329,71 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		const RainDrop &drop = gRainDrops[i];
 		if (drop.layer == 0)
-			continue; // Drawn on walkable ground behind roofs/rocks/trees in DrawWeatherGroundTile()
+			continue;
 
 		const int headX = static_cast<int>(drop.x);
 		const int headY = static_cast<int>(drop.y);
+
+		if (isSnow || isAsh) {
+			if (headY < 3 || headY >= out.h() - 3 || headX < 3 || headX >= out.w() - 4)
+				continue;
+
+			const bool isEmber = isAsh && ((i & 11U) == 0U);
+			const uint8_t coreCol = isEmber
+			    ? static_cast<uint8_t>(PAL16_ORANGE + 2 + (i & 1U))
+			    : (isAsh
+			            ? static_cast<uint8_t>(PAL16_GRAY + 5 + (i & 3U))
+			            : static_cast<uint8_t>(PAL16_GRAY + 1 + (i & 1U)));
+			const uint8_t rimCol = isEmber
+			    ? static_cast<uint8_t>(PAL16_RED + 4 + (i & 1U))
+			    : (isAsh
+			            ? static_cast<uint8_t>(PAL16_BEIGE + 7 + (i & 1U))
+			            : static_cast<uint8_t>(PAL16_BLUE + 2 + (i & 1U)));
+			const uint32_t tumble = (static_cast<uint32_t>(i) + (nowTick >> 7)) % 3U;
+
+			if (drop.layer == 1) {
+				PlotBlended50(out, headX, headY, coreCol);
+				if (isSnow && isHeavy) {
+					// SnowHeavy (Snowstorm / Blizzard): wind-driven diagonal snow flurry streak + crystal head
+					PlotBlended37(out, headX + 1, headY - 1, coreCol);
+					PlotBlended25(out, headX + 2, headY - 1, rimCol);
+					PlotBlended19(out, headX + 3, headY - 2, rimCol);
+					PlotBlended25(out, headX, headY + 1, rimCol);
+				} else if (tumble == 0U) {
+					PlotBlended25(out, headX - 1, headY, rimCol);
+					PlotBlended25(out, headX + 1, headY, rimCol);
+					PlotBlended19(out, headX, headY - 1, rimCol);
+					PlotBlended19(out, headX, headY + 1, rimCol);
+				} else if (tumble == 1U) {
+					PlotBlended25(out, headX - 1, headY - 1, rimCol);
+					PlotBlended25(out, headX + 1, headY + 1, rimCol);
+					PlotBlended19(out, headX + 1, headY, rimCol);
+				} else {
+					PlotBlended37(out, headX + 1, headY, coreCol);
+					PlotBlended19(out, headX, headY - 1, rimCol);
+					PlotBlended19(out, headX - 1, headY + 1, rimCol);
+				}
+			} else {
+				PlotBlended37(out, headX, headY, coreCol);
+				PlotBlended25(out, headX - 1, headY, coreCol);
+				PlotBlended25(out, headX + 1, headY, coreCol);
+				PlotBlended25(out, headX, headY - 1, coreCol);
+				PlotBlended25(out, headX, headY + 1, coreCol);
+				PlotBlended12(out, headX - 1, headY - 1, rimCol);
+				PlotBlended12(out, headX + 1, headY - 1, rimCol);
+				PlotBlended12(out, headX - 1, headY + 1, rimCol);
+				PlotBlended12(out, headX + 1, headY + 1, rimCol);
+				if (isSnow && isHeavy) {
+					PlotBlended19(out, headX + 2, headY - 1, coreCol);
+					PlotBlended12(out, headX + 3, headY - 2, rimCol);
+				} else if (tumble != 2U) {
+					PlotBlended12(out, headX - 2, headY, rimCol);
+					PlotBlended12(out, headX + 2, headY, rimCol);
+				}
+			}
+			continue;
+		}
+
 		const int totalLen = static_cast<int>(drop.length) + (drop.layer == 2 ? extraLen2 : extraLen1);
 
 		if (headY < 0 || headY - totalLen >= out.h() || headX < -40 || headX >= out.w() + 40)
@@ -1290,8 +1403,6 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		const float slantXPerY = (drop.layer == 2 ? slant2 : slant1) + gust;
 
 		if (drop.layer == 1) {
-			// Layer 1 (Midground world-plane air streak, +15% transparency):
-			// Softened from (75% -> 50% -> 25%) to (50% head -> 37.5% body -> 25% tail)
 			for (int step = 0; step < totalLen; ++step) {
 				const int py = headY - step;
 				const int px = headX - static_cast<int>(static_cast<float>(step) * slantXPerY);
@@ -1307,9 +1418,6 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 				}
 			}
 		} else {
-			// Layer 2 (Near-Camera Foreground "Lens" Rain, +35% transparency):
-			// Softened by ~35% so near-camera drops are translucent and atmospheric rather than bright/glaring:
-			// Core uses 50% -> 37.5% -> 25% -> 18.75% and DoF wings use 25% / 18.75% with darker halo shade (+2).
 			const uint8_t haloCol = static_cast<uint8_t>(drop.colorIndex + 2);
 			for (int step = 0; step < totalLen; ++step) {
 				const int py = headY - step;
@@ -1318,21 +1426,17 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 					continue;
 
 				if (step * 5 < totalLen) {
-					// Leading 20% head: 50% core + 25% right DoF wing + 18.75% left DoF wing
 					PlotBlended50(out, px, py, drop.colorIndex);
 					PlotBlended25(out, px + 1, py, haloCol);
 					PlotBlended19(out, px - 1, py, haloCol);
 				} else if (step * 2 < totalLen) {
-					// Upper-mid 30%: 37.5% core + 25% right DoF wing + 18.75% left DoF wing
 					PlotBlended37(out, px, py, drop.colorIndex);
 					PlotBlended25(out, px + 1, py, haloCol);
 					PlotBlended19(out, px - 1, py, haloCol);
 				} else if (step * 4 < totalLen * 3) {
-					// Lower-mid 25%: 25% core + 18.75% right DoF wing
 					PlotBlended25(out, px, py, drop.colorIndex);
 					PlotBlended19(out, px + 1, py, haloCol);
 				} else {
-					// Trailing 25% tail: 18.75% core taper
 					PlotBlended19(out, px, py, drop.colorIndex);
 				}
 			}

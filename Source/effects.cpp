@@ -157,6 +157,12 @@ TSFX sgSFX[] = {
 /*LS_THUNDERA*/    { sfx_MISC,                  "sfx\\misc\\thundera.wav",       nullptr },
 /*LS_THUNDERB*/    { sfx_MISC,                  "sfx\\misc\\thunderb.wav",       nullptr },
 /*LS_LAVABUBBLES*/ { sfx_MISC,                  "sfx\\misc\\LavaBubbles.wav",    nullptr },
+/*LS_INSECTBUZZ*/  { sfx_MISC,                  "sfx\\misc\\InsectBuzz.wav",     nullptr },
+/*LS_INSECTDISPERSE*/ { sfx_MISC,               "sfx\\misc\\InsectBuzzDisperse.wav", nullptr },
+/*LS_SNOWLIGHT*/   { sfx_MISC,                  "sfx\\misc\\SnowLight.wav",      nullptr },
+/*LS_SNOWHEAVY*/   { sfx_MISC,                  "sfx\\misc\\SnowHeavy.wav",      nullptr },
+/*LS_ASHSTORMLIGHT*/ { sfx_MISC,                "sfx\\misc\\AshStormLight.wav",  nullptr },
+/*LS_ASHSTORMHEAVY*/ { sfx_MISC,                "sfx\\misc\\AshStormHeavy.wav",  nullptr },
 /*TSFX_BMAID1*/    { sfx_STREAM,                "sfx\\towners\\bmaid01.wav",     nullptr },
 /*TSFX_BMAID2*/   { sfx_STREAM,                "sfx\\towners\\bmaid02.wav",   nullptr },
 /*TSFX_BMAID3*/   { sfx_STREAM,                "sfx\\towners\\bmaid03.wav",   nullptr },
@@ -1231,8 +1237,17 @@ void sound_update()
 	if (!gbRunGame || !gbSoundOn || leveltype != DTYPE_TOWN || setlevel) {
 		StopSFX(LS_RAINLIGHT);
 		StopSFX(LS_RAINHEAVY);
+		StopSFX(LS_SNOWLIGHT);
+		StopSFX(LS_SNOWHEAVY);
+		StopSFX(LS_ASHSTORMLIGHT);
+		StopSFX(LS_ASHSTORMHEAVY);
 		StopSFX(LS_THUNDERA);
 		StopSFX(LS_THUNDERB);
+	}
+
+	if (!gbRunGame || !gbSoundOn) {
+		StopSFX(LS_LAVABUBBLES);
+		StopSFX(LS_INSECTBUZZ);
 	}
 
 	StreamUpdate();
@@ -1293,8 +1308,14 @@ void effects_play_sound(_sfx_id id)
 	if (!gbRunGame) {
 		StopSFX(LS_RAINLIGHT);
 		StopSFX(LS_RAINHEAVY);
+		StopSFX(LS_SNOWLIGHT);
+		StopSFX(LS_SNOWHEAVY);
+		StopSFX(LS_ASHSTORMLIGHT);
+		StopSFX(LS_ASHSTORMHEAVY);
 		StopSFX(LS_THUNDERA);
 		StopSFX(LS_THUNDERB);
+		StopSFX(LS_LAVABUBBLES);
+		StopSFX(LS_INSECTBUZZ);
 	}
 
 	TSFX &sfx = sgSFX[id];

@@ -1,9 +1,10 @@
 /**
  * @file ground_fog.cpp
  *
- * Implementation of 3D Isometric Volumetric Ground Fog (with 2-Layer Isometric Camera Parallax
- * & 30 Hz Cached Sheet Optimization), Interactive Half-Tile Entity Dispersion, and
- * Caves Boiling Lava Bubbles.
+ * Implementation of 3D Isometric Volumetric Ground Fog v4 (2-Layer World-Locked Volumetric
+ * Separation with SE Drop-Shadows, Slow Sub-Texel 30 Hz Drift, and High-Contrast Hell Smoke),
+ * Interactive Half-Tile Entity Dispersion, Caves Boiling Lava Bubbles, and Hive/Catacombs
+ * 3D Insect Swarms.
  */
 #include "engine/render/ground_fog.h"
 
@@ -77,103 +78,112 @@ LevelFogConfig GetLevelFogConfig()
 {
 	switch (leveltype) {
 	case DTYPE_CATHEDRAL:
+		// Cold spectral mist bed (Layer 1) with bright drifting ectoplasmic cloud puffs (Layer 2)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/172,
-			/*intensityCutoff=*/84,
-			/*uvScale=*/11,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 4),
+			/*maxDensity=*/204,
+			/*intensityCutoff=*/76,
+			/*uvScale=*/12,
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
 			/*coreShade=*/static_cast<uint8_t>(PAL16_BLUE + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
-			/*isDarkSmoke=*/false,
-			/*allowHeavyBlend=*/false,
-			/*hasPulse=*/false,
-			/*driftDivX=*/175,
-			/*driftDivY=*/255
-		};
-	case DTYPE_CATACOMBS:
-		return {
-			/*enabled=*/true,
-			/*spawnChancePercent=*/100,
-			/*maxDensity=*/184,
-			/*intensityCutoff=*/80,
-			/*uvScale=*/10,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_BEIGE + 5),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_BEIGE + 9),
 			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 12),
 			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
 			/*hasPulse=*/false,
-			/*driftDivX=*/210,
-			/*driftDivY=*/285
+			/*driftDivX=*/620,
+			/*driftDivY=*/880
 		};
-	case DTYPE_CAVES:
+	case DTYPE_CATACOMBS:
+		// Dusty bone-crypt haze (Layer 1) with pale drifting ash-sand billows (Layer 2)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/186,
-			/*intensityCutoff=*/80,
-			/*uvScale=*/13,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_YELLOW + 5),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_ORANGE + 8),
+			/*maxDensity=*/210,
+			/*intensityCutoff=*/74,
+			/*uvScale=*/12,
+			/*crestShade=*/static_cast<uint8_t>(PAL16_BEIGE + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_BEIGE + 8),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 12),
+			/*isDarkSmoke=*/false,
+			/*allowHeavyBlend=*/false,
+			/*hasPulse=*/false,
+			/*driftDivX=*/680,
+			/*driftDivY=*/920
+		};
+	case DTYPE_CAVES:
+		// Rising volcanic sulfur steam bed (Layer 1) with bright golden-amber thermal puffs (Layer 2)
+		return {
+			/*enabled=*/true,
+			/*spawnChancePercent=*/100,
+			/*maxDensity=*/212,
+			/*intensityCutoff=*/74,
+			/*uvScale=*/14,
+			/*crestShade=*/static_cast<uint8_t>(PAL16_YELLOW + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_ORANGE + 7),
 			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
 			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
 			/*hasPulse=*/false,
-			/*driftDivX=*/115,
-			/*driftDivY=*/-120
+			/*driftDivX=*/460,
+			/*driftDivY=*/-490
 		};
 	case DTYPE_HELL:
+		// Heavy rolling abyssal smoke:
+		// Layer 1 is dark charcoal soot (PAL16_GRAY + 9) with Pure Black (0) cast drop-shadow troughs;
+		// Layer 2 has visible smoky ash-gray crests (PAL16_GRAY + 5) so both layers are clearly visible
+		// over the dark Hell floor while darkening smoothly to 0 at the outer light-radius edge!
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/220,
-			/*intensityCutoff=*/70,
+			/*maxDensity=*/236,
+			/*intensityCutoff=*/66,
 			/*uvScale=*/12,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 12),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 14),
-			/*troughShade=*/0,
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 5), // 245: smoky ash-gray upper billow crest
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),  // 249: dark smoldering charcoal smoke body
+			/*troughShade=*/0,                                   // 0: Pure Black (0,0,0) shadow trough
 			/*isDarkSmoke=*/true,
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/125,
-			/*driftDivY=*/-135
+			/*driftDivX=*/480,
+			/*driftDivY=*/-520
 		};
 	case DTYPE_NEST:
+		// Pulsing toxic yellow-green bio-spore miasma
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/192,
-			/*intensityCutoff=*/76,
+			/*maxDensity=*/214,
+			/*intensityCutoff=*/72,
 			/*uvScale=*/14,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_YELLOW + 4),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_YELLOW + 9),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_YELLOW + 2),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_YELLOW + 8),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 12),
 			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/false,
 			/*hasPulse=*/true,
-			/*driftDivX=*/165,
-			/*driftDivY=*/-190
+			/*driftDivX=*/560,
+			/*driftDivY=*/-640
 		};
 	case DTYPE_CRYPT:
+		// Thick, heavy ancient tomb-dust & ectoplasmic floor blanket
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/218,
-			/*intensityCutoff=*/68,
-			/*uvScale=*/9,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_BEIGE + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
+			/*maxDensity=*/232,
+			/*intensityCutoff=*/64,
+			/*uvScale=*/11,
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_BEIGE + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
 			/*isDarkSmoke=*/false,
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/240,
-			/*driftDivY=*/310
+			/*driftDivX=*/760,
+			/*driftDivY=*/980
 		};
 	default:
-		return { false, 0, 0, 255, 10, 0, 0, 0, false, false, false, 100, 100 };
+		return { false, 0, 0, 255, 10, 0, 0, 0, false, false, false, 600, 600 };
 	}
 }
 
@@ -319,17 +329,21 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 	gLastFogSheetDtype = leveltype;
 
 	const int32_t sTicks = static_cast<int32_t>(ticks);
+	// Layer 1 (Low Ground Mist Bed): very slow, creeping drift along primary thermal vector
 	const int driftX1 = (sTicks * 256) / cfg.driftDivX;
 	const int driftY1 = (sTicks * 256) / cfg.driftDivY;
 
-	const int driftX2 = ((driftX1 * 19) >> 4) + ((driftY1 * 7) >> 4);
-	const int driftY2 = ((driftY1 * 17) >> 4) - ((driftX1 * 6) >> 4);
+	// Layer 2 (Elevated 3D Cloud Puffs): drifts at a distinct ~65-degree cross-wind angle
+	// and ~1.45x speed relative to Layer 1 so you clearly see Layer 2 billows gliding
+	// diagonally across the slower Layer 1 mist blanket underneath!
+	const int driftX2 = ((driftX1 * 5) >> 3) + driftY1;
+	const int driftY2 = ((driftY1 * 5) >> 3) - driftX1;
 
-	const int warpDriftX = -(sTicks * 160) / cfg.driftDivX;
-	const int warpDriftY = (sTicks * 160) / cfg.driftDivY;
+	const int warpDriftX = -(sTicks * 128) / cfg.driftDivX;
+	const int warpDriftY = (sTicks * 128) / cfg.driftDivY;
 
 	if (cfg.hasPulse) {
-		const int phase = (sTicks / 45) & 0xFF;
+		const int phase = (sTicks / 65) & 0xFF;
 		const int triWave = (phase < 128) ? phase : (255 - phase);
 		gCachedPulseOffset = (triWave >> 2) - 16;
 	} else {
@@ -338,34 +352,38 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 
 	for (int y = 0; y < 256; y++) {
 		const int baseV = (y << 8);
-		const int vWarp0 = (y + (warpDriftY >> 8)) & 0xFF;
-		const int vWarp1 = (y + 73 + (warpDriftY >> 8)) & 0xFF;
+		const int vWarpFixed0 = baseV + warpDriftY;
+		const int vWarpFixed1 = baseV + (73 << 8) - warpDriftX;
 
 		for (int x = 0; x < 256; x++) {
 			const int baseU = (x << 8);
-			const int uWarp0 = (x + (warpDriftX >> 8)) & 0xFF;
-			const int uWarp1 = (x + 41 + (warpDriftX >> 8)) & 0xFF;
+			const int uWarpFixed0 = baseU + warpDriftX;
+			const int uWarpFixed1 = baseU + (41 << 8) + warpDriftY;
 
-			const int warpX = (static_cast<int>(gFogWarpLut[vWarp0][uWarp0]) - 128) * 18;
-			const int warpY = (static_cast<int>(gFogWarpLut[vWarp1][uWarp1]) - 128) * 18;
+			// Sub-texel bilinear domain warp so the organic curl never jumps by integer texels
+			const int warpX = (SampleLutBilinear(gFogWarpLut, uWarpFixed0, vWarpFixed0) - 128) * 14;
+			const int warpY = (SampleLutBilinear(gFogWarpLut, uWarpFixed1, vWarpFixed1) - 128) * 14;
 
+			// 1. Layer 1: Low Ground-Hugging Mist Bed
 			const int u1 = baseU + warpX + driftX1;
 			const int v1 = baseV + warpY + driftY1;
 			gCachedFloorFog[y][x] = static_cast<uint8_t>(SampleLutBilinear(gFogNoiseLut, u1, v1));
 
+			// 2. Layer 2: Elevated 3D Cloud Puffs (decorrelated slice +137, +89 with cross-wind shear)
 			const int u2 = baseU - warpX + driftX2 + (137 << 8);
 			const int v2 = baseV + warpY + driftY2 + (89 << 8);
 			const int hCanopy = SampleLutBilinear(gFogNoiseLut, u2, v2);
 			gCachedCanopyFog[y][x] = static_cast<uint8_t>(hCanopy);
 
-			const int hCanopyNW = SampleLutBilinear(gFogNoiseLut, u2 - (4 << 8), v2 - (4 << 8));
+			// 3D Spherical Dome Slope Lighting for Layer 2 Cloud Puffs (top-left light source)
+			const int hCanopyNW = SampleLutBilinear(gFogNoiseLut, u2 - (5 << 8), v2 - (5 << 8));
 			const int slope = hCanopy - hCanopyNW;
-			if (slope > 10 && hCanopy > cfg.intensityCutoff + 28) {
-				gCachedCanopyLight[y][x] = 2;
-			} else if (slope < -10) {
-				gCachedCanopyLight[y][x] = 0;
+			if (slope >= 4 || hCanopy > 168) {
+				gCachedCanopyLight[y][x] = 2; // Bright sunlit 3D dome crest
+			} else if (slope < -8) {
+				gCachedCanopyLight[y][x] = 0; // Self-shadowed underside rim
 			} else {
-				gCachedCanopyLight[y][x] = 1;
+				gCachedCanopyLight[y][x] = 1; // Mid cloud body
 			}
 		}
 	}
@@ -548,6 +566,10 @@ inline int GetTileLightVisibility256(int tx, int ty)
 		return 0;
 	return LightIndexToVisibility256(dLight[tx][ty]);
 }
+
+// ============================================================================
+// Batch 2: Caves Boiling Lava Bubbles (Visibly Swelling 3D Blisters & Bursts)
+// ============================================================================
 
 struct LavaBubble {
 	bool active;
@@ -957,6 +979,328 @@ void DrawCavesLavaBubblesTile(const Surface &out, Point tilePosition, Point targ
 	}
 }
 
+// ============================================================================
+// Batch 3: Hive & Catacombs Insect Swarms (3 Visual Variants, Proximity Buzz
+// Loop & Permanent Walk-Through Dispersal)
+// ============================================================================
+
+struct InsectSwarm {
+	bool active;
+	bool dispersing;
+	uint8_t disperseTick; // 0..16 ticks of outward radial scatter before permanent removal
+	uint8_t variant;      // 0 = Carrion Flies, 1 = Plague Locusts, 2 = Blood Wasps/Mites
+	int32_t subPosX256;   // World tile X * 256 (128 = center of tile)
+	int32_t subPosY256;   // World tile Y * 256 (128 = center of tile)
+	int16_t velX256;      // Slow drift velocity X (-5..+5 per 50ms tick -> ~0.3 tiles/sec)
+	int16_t velY256;      // Slow drift velocity Y (-5..+5 per 50ms tick -> ~0.3 tiles/sec)
+	uint16_t phase;       // Animation phase for 3D orbital insect motion
+	uint8_t seed;         // Per-swarm seed
+};
+
+constexpr size_t MaxInsectSwarms = 18;
+std::array<InsectSwarm, MaxInsectSwarms> gInsectSwarms;
+std::array<std::array<uint8_t, MAXDUNY>, MAXDUNX> gSwarmCountOnTile;
+uint32_t gInsectSwarmRngState = 0xC47A91E3U;
+
+uint32_t NextSwarmRand()
+{
+	uint32_t x = gInsectSwarmRngState;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	gInsectSwarmRngState = (x != 0) ? x : 0xC47A91E3U;
+	return gInsectSwarmRngState;
+}
+
+inline bool IsInsectSwarmLevel()
+{
+	return (leveltype == DTYPE_CATACOMBS || leveltype == DTYPE_NEST) && !setlevel;
+}
+
+inline bool IsInsectSwarmRoomTile(Point tile)
+{
+	if (!IsFogPassableTile(tile))
+		return false;
+	return IsFogPassableTile({ tile.x - 1, tile.y })
+	    && IsFogPassableTile({ tile.x + 1, tile.y })
+	    && IsFogPassableTile({ tile.x, tile.y - 1 })
+	    && IsFogPassableTile({ tile.x, tile.y + 1 });
+}
+
+void RebuildSwarmTileCounts()
+{
+	for (int x = 0; x < MAXDUNX; x++) {
+		for (int y = 0; y < MAXDUNY; y++) {
+			gSwarmCountOnTile[x][y] = 0;
+		}
+	}
+	for (const InsectSwarm &s : gInsectSwarms) {
+		if (!s.active)
+			continue;
+		const int tx = std::clamp(static_cast<int>(s.subPosX256 >> 8), 0, MAXDUNX - 1);
+		const int ty = std::clamp(static_cast<int>(s.subPosY256 >> 8), 0, MAXDUNY - 1);
+		gSwarmCountOnTile[tx][ty]++;
+	}
+}
+
+void ResetInsectSwarms()
+{
+	StopSFX(LS_INSECTBUZZ);
+	for (InsectSwarm &s : gInsectSwarms) {
+		s.active = false;
+		s.dispersing = false;
+		s.disperseTick = 0;
+	}
+	for (int x = 0; x < MAXDUNX; x++) {
+		for (int y = 0; y < MAXDUNY; y++) {
+			gSwarmCountOnTile[x][y] = 0;
+		}
+	}
+
+	if (!IsInsectSwarmLevel())
+		return;
+
+	gInsectSwarmRngState = GetFloorFogSeedHash() ^ 0x9E3779B9U;
+	const Point playerStart = MyPlayer != nullptr ? Point(MyPlayer->position.tile) : ViewPosition;
+
+	size_t spawned = 0;
+	for (int attempt = 0; attempt < 600 && spawned < MaxInsectSwarms; attempt++) {
+		const uint32_t r = NextSwarmRand();
+		const int tx = 14 + static_cast<int>(r % (MAXDUNX - 28));
+		const int ty = 14 + static_cast<int>((r >> 8) % (MAXDUNY - 28));
+		const Point candidate { tx, ty };
+
+		if (!IsInsectSwarmRoomTile(candidate))
+			continue;
+
+		if (std::abs(tx - playerStart.x) <= 5 && std::abs(ty - playerStart.y) <= 5)
+			continue;
+
+		bool tooClose = false;
+		for (size_t i = 0; i < spawned; i++) {
+			const int sx = static_cast<int>(gInsectSwarms[i].subPosX256 >> 8);
+			const int sy = static_cast<int>(gInsectSwarms[i].subPosY256 >> 8);
+			if (std::abs(tx - sx) <= 4 && std::abs(ty - sy) <= 4) {
+				tooClose = true;
+				break;
+			}
+		}
+		if (tooClose)
+			continue;
+
+		const uint32_t r2 = NextSwarmRand();
+		InsectSwarm &s = gInsectSwarms[spawned++];
+		s.active = true;
+		s.dispersing = false;
+		s.disperseTick = 0;
+		s.variant = static_cast<uint8_t>(r2 % 3U); // 3 distinct visual variants (0, 1, 2)
+		s.subPosX256 = (tx << 8) + 128;
+		s.subPosY256 = (ty << 8) + 128;
+		s.velX256 = static_cast<int16_t>(-3 + static_cast<int>((r2 >> 4) % 7U));
+		s.velY256 = static_cast<int16_t>(-3 + static_cast<int>((r2 >> 8) % 7U));
+		if (s.velX256 == 0 && s.velY256 == 0)
+			s.velX256 = 2;
+		s.phase = static_cast<uint16_t>((r2 >> 12) & 0xFFFFU);
+		s.seed = static_cast<uint8_t>((r2 >> 24) & 0xFFU);
+	}
+
+	RebuildSwarmTileCounts();
+}
+
+void SyncInsectSwarmAudio()
+{
+	const bool isMenuPaused = (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active()));
+	if (!gbRunGame || !gbSoundOn || isMenuPaused || !IsInsectSwarmLevel()) {
+		StopSFX(LS_INSECTBUZZ);
+		return;
+	}
+
+	const Point center = MyPlayer != nullptr ? Point(MyPlayer->position.tile) : ViewPosition;
+	const int32_t plrX256 = (center.x << 8) + 128;
+	const int32_t plrY256 = (center.y << 8) + 128;
+
+	constexpr int32_t MaxHearDist256 = 14 * 256;
+	int64_t minDistSq256 = static_cast<int64_t>(MaxHearDist256 + 256) * (MaxHearDist256 + 256);
+
+	for (const InsectSwarm &s : gInsectSwarms) {
+		if (!s.active || s.dispersing)
+			continue;
+		const int64_t dx = s.subPosX256 - plrX256;
+		const int64_t dy = s.subPosY256 - plrY256;
+		const int64_t dSq = dx * dx + dy * dy;
+		if (dSq < minDistSq256) {
+			minDistSq256 = dSq;
+		}
+	}
+
+	if (minDistSq256 > static_cast<int64_t>(MaxHearDist256) * MaxHearDist256) {
+		StopSFX(LS_INSECTBUZZ);
+		return;
+	}
+
+	const int dist256 = static_cast<int>((std::sqrt(static_cast<double>(minDistSq256)) * 256.0) / static_cast<double>(MaxHearDist256));
+	const int clamped256 = std::clamp(dist256, 0, 256);
+	const int buzzVolume = -150 - ((clamped256 * 1600) >> 8);
+	PlayLoopingSFX(LS_INSECTBUZZ, buzzVolume);
+}
+
+void UpdateInsectSwarmsSimulation()
+{
+	if (!IsInsectSwarmLevel()) {
+		StopSFX(LS_INSECTBUZZ);
+		return;
+	}
+
+	if (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active())) {
+		StopSFX(LS_INSECTBUZZ);
+		return;
+	}
+
+	bool anyActive = false;
+	for (InsectSwarm &s : gInsectSwarms) {
+		if (!s.active)
+			continue;
+		anyActive = true;
+		s.phase = static_cast<uint16_t>(s.phase + 7U);
+
+		if (s.dispersing) {
+			s.disperseTick++;
+			if (s.disperseTick >= 16) {
+				s.active = false;
+			}
+			continue;
+		}
+
+		for (const Player &player : Players) {
+			if (!player.plractive || !player.isOnActiveLevel())
+				continue;
+			const int32_t px256 = (player.position.tile.x << 8) + 128;
+			const int32_t py256 = (player.position.tile.y << 8) + 128;
+			const int32_t dx = s.subPosX256 - px256;
+			const int32_t dy = s.subPosY256 - py256;
+			if (dx * dx + dy * dy <= 320 * 320) {
+				s.dispersing = true;
+				s.disperseTick = 0;
+				PlaySFX(LS_INSECTDISPERSE);
+				break;
+			}
+		}
+		if (s.dispersing)
+			continue;
+
+		if ((s.phase & 0x3FU) == 0) {
+			const uint32_t r = NextSwarmRand();
+			s.velX256 = static_cast<int16_t>(std::clamp(static_cast<int>(s.velX256) + static_cast<int>(r % 3U) - 1, -4, 4));
+			s.velY256 = static_cast<int16_t>(std::clamp(static_cast<int>(s.velY256) + static_cast<int>((r >> 3) % 3U) - 1, -4, 4));
+			if (s.velX256 == 0 && s.velY256 == 0)
+				s.velX256 = 2;
+		}
+
+		const int32_t nextX256 = s.subPosX256 + s.velX256;
+		const int32_t nextY256 = s.subPosY256 + s.velY256;
+		const Point nextTile { static_cast<int>(nextX256 >> 8), static_cast<int>(nextY256 >> 8) };
+
+		if (IsInsectSwarmRoomTile(nextTile)) {
+			s.subPosX256 = nextX256;
+			s.subPosY256 = nextY256;
+		} else {
+			s.velX256 = static_cast<int16_t>(-s.velX256);
+			s.velY256 = static_cast<int16_t>(-s.velY256);
+		}
+	}
+
+	if (anyActive) {
+		RebuildSwarmTileCounts();
+	}
+}
+
+void DrawInsectSwarmOnTile(const Surface &out, Point tilePosition, Point targetBufferPosition, int lightIndex)
+{
+	if (lightIndex >= LightsMax)
+		return;
+
+	const uint8_t *lightTbl = LightTables[std::clamp(lightIndex, 0, LightsMax - 1)].data();
+	const int outW = out.w();
+	const int outH = out.h();
+
+	static constexpr int Sin16[16] = { 0, 6, 11, 15, 16, 15, 11, 6, 0, -6, -11, -15, -16, -15, -11, -6 };
+
+	const uint32_t animFrame = (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active()))
+	    ? 0U
+	    : (SDL_GetTicks() / 24U);
+
+	for (const InsectSwarm &s : gInsectSwarms) {
+		if (!s.active)
+			continue;
+		const int tx = static_cast<int>(s.subPosX256 >> 8);
+		const int ty = static_cast<int>(s.subPosY256 >> 8);
+		if (tx != tilePosition.x || ty != tilePosition.y)
+			continue;
+
+		const int fx = (s.subPosX256 & 0xFF) - 128;
+		const int fy = (s.subPosY256 & 0xFF) - 128;
+		const int isoOffX = ((fx - fy) * 32) >> 8;
+		const int isoOffY = ((fx + fy) * 16) >> 8;
+
+		const int centerX = targetBufferPosition.x + 32 + isoOffX;
+		const int centerY = targetBufferPosition.y - 20 + isoOffY;
+		if (centerX < 24 || centerX >= outW - 24 || centerY < 28 || centerY >= outH - 20)
+			continue;
+
+		uint8_t bodyShade = 0;
+		uint8_t wingShade = 0;
+		int radiusScaleX = 14;
+		int radiusScaleY = 10;
+
+		if (s.variant == 0) {
+			bodyShade = lightTbl[PAL16_GRAY + 13];
+			wingShade = lightTbl[PAL16_BEIGE + 3];
+			radiusScaleX = 12;
+			radiusScaleY = 9;
+		} else if (s.variant == 1) {
+			bodyShade = lightTbl[PAL16_YELLOW + 10];
+			wingShade = lightTbl[PAL16_YELLOW + 2];
+			radiusScaleX = 16;
+			radiusScaleY = 11;
+		} else {
+			bodyShade = lightTbl[PAL16_RED + 7];
+			wingShade = lightTbl[PAL16_ORANGE + 3];
+			const int pulse = Sin16[(animFrame + s.seed) & 15] >> 2;
+			radiusScaleX = 14 + pulse;
+			radiusScaleY = 10 + (pulse >> 1);
+		}
+
+		const int scatterExpand = s.dispersing ? (static_cast<int>(s.disperseTick) * 3) : 0;
+		const int scatterLift = s.dispersing ? (static_cast<int>(s.disperseTick) * 2) : 0;
+		const int numInsects = s.dispersing ? std::max(0, 26 - static_cast<int>(s.disperseTick) * 2) : 26;
+
+		for (int i = 0; i < numInsects; i++) {
+			const uint32_t bugHash = static_cast<uint32_t>(i * 73 + s.seed * 19);
+			const int p1 = static_cast<int>((animFrame * (2 + (i & 1)) + bugHash) & 15U);
+			const int p2 = static_cast<int>((animFrame * 3 + (bugHash >> 2)) & 15U);
+			const int p3 = static_cast<int>((animFrame * 2 + i * 5 + s.phase) & 15U);
+
+			const int orbitR = 5 + (i % 7);
+			const int ox = ((Sin16[p1] * (radiusScaleX + scatterExpand) * orbitR) / (16 * 11)) + (Sin16[p2] >> 3);
+			const int oy = ((Sin16[(p1 + 4) & 15] * (radiusScaleY + scatterExpand) * orbitR) / (16 * 11)) + (Sin16[p3] >> 2) - scatterLift;
+
+			const int bx = centerX + ox;
+			const int by = centerY + oy;
+			if (bx < 1 || bx >= outW - 1 || by < 1 || by >= outH - 1)
+				continue;
+
+			out[{ bx, by }] = bodyShade;
+			if (((animFrame + i) & 1U) != 0) {
+				out[{ bx - 1, by - 1 }] = Blend50(wingShade, out[{ bx - 1, by - 1 }]);
+				out[{ bx + 1, by }] = Blend25(bodyShade, out[{ bx + 1, by }]);
+			} else {
+				out[{ bx + 1, by - 1 }] = Blend50(wingShade, out[{ bx + 1, by - 1 }]);
+				out[{ bx, by + 1 }] = Blend25(bodyShade, out[{ bx, by + 1 }]);
+			}
+		}
+	}
+}
+
 } // namespace
 
 void ResetGroundFogLevel()
@@ -989,11 +1333,13 @@ void ResetGroundFogLevel()
 	}
 
 	ResetCavesLavaBubbles();
+	ResetInsectSwarms();
 }
 
 void UpdateGroundFogSimulation()
 {
 	UpdateCavesLavaBubblesSimulation();
+	UpdateInsectSwarmsSimulation();
 
 	if (!*sgOptions.Graphics.groundFog || !gLevelHasFog)
 		return;
@@ -1074,6 +1420,7 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 	if (nowTicks - sLastAudioSyncTick >= 30U) {
 		sLastAudioSyncTick = nowTicks;
 		SyncLavaBubbleAudio();
+		SyncInsectSwarmAudio();
 	}
 
 	const int outW = out.w();
@@ -1174,23 +1521,25 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 			}
 			const bool fastInteriorTile = allWallsClear && tileUndispersed;
 
+			// =========================================================================
+			// 2-Layer World-Locked Volumetric Coordinates (Zero Camera-Scroll Reaction!):
+			// - Layer 1 (Low Ground Mist Bed): Finer scale (uvScale1 = cfg.uvScale), wider coverage,
+			//   slow creeping drift, shaded with litCore / litTrough.
+			// - Layer 2 (Elevated 3D Cloud Puffs): 2x larger scale (uvScale2 = uvScale1 / 2),
+			//   higher threshold (canopyCutoff = cfg.intensityCutoff + 24) so it forms distinct
+			//   floating 3D cloud islands gliding diagonally across Layer 1, casting a dark
+			//   drop-shadow (+2, +2 texels SE) onto Layer 1 below and highlighted with litCrest!
+			// =========================================================================
 			const int uvScale1 = cfg.uvScale;
-			const int uvScale2 = std::max(6, (uvScale1 * 2) / 3);
+			const int uvScale2 = std::max(5, cfg.uvScale / 2); // 2x larger upper 3D cloud billows
 
 			const int baseWorldU1 = tx * uvScale1;
 			const int baseWorldV1 = ty * uvScale1;
+			const int baseWorldU2 = tx * uvScale2 + 37;
+			const int baseWorldV2 = ty * uvScale2 + 53;
 
-			const int tileWorldPxX = (tx - ty) * 32;
-			const int tileWorldPxY = (tx + ty) * 16;
-			const int camWorldPxX = tileWorldPxX - (targetBufferPosition.x - (outW >> 1));
-			const int camWorldPxY = tileWorldPxY - (targetBufferPosition.y - (outH >> 1));
-
-			const int camParU = ((camWorldPxY * 2 - camWorldPxX) * uvScale2) / 140;
-			const int camParV = ((camWorldPxY * 2 + camWorldPxX) * uvScale2) / 140;
-			const int baseWorldU2 = tx * uvScale2 + camParU;
-			const int baseWorldV2 = ty * uvScale2 + camParV;
-
-			const int invSpan = (256 * 256) / std::max(1, 255 - static_cast<int>(cfg.intensityCutoff));
+			const int floorCutoff = cfg.intensityCutoff;
+			const int canopyCutoff = cfg.intensityCutoff + 24;
 
 			for (int dy = 0; dy < 32; dy++) {
 				const int sy = targetBufferPosition.y - 31 + dy;
@@ -1234,53 +1583,68 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 							continue;
 					}
 
+					// O(1) lookup into 30 Hz pre-composited Layer 1 (Low Ground Mist Bed)
 					const int u1Idx = (baseWorldU1 + ((u256 * uvScale1 + swirlX * 4) >> 8)) & 0xFF;
 					const int v1Idx = (baseWorldV1 + ((v256 * uvScale1 + swirlY * 4) >> 8)) & 0xFF;
 					const int hFloor = gCachedFloorFog[v1Idx][u1Idx];
 
+					// O(1) lookup into 30 Hz pre-composited Layer 2 (Elevated 3D Cloud Puffs)
 					const int u2Idx = (baseWorldU2 + ((u256 * uvScale2 + swirlX * 2) >> 8)) & 0xFF;
 					const int v2Idx = (baseWorldV2 + ((v256 * uvScale2 + swirlY * 2) >> 8)) & 0xFF;
 					const int hCanopy = gCachedCanopyFog[v2Idx][u2Idx];
 					const uint8_t canopyLight = gCachedCanopyLight[v2Idx][u2Idx];
 
-					const int canopyEntityDens = entityDensity + (((effectiveMaxDensity - entityDensity) * 3) >> 3);
 					const int floorIntensity = (hFloor * entityDensity) >> 8;
+					const int canopyEntityDens = entityDensity + (((effectiveMaxDensity - entityDensity) * 3) >> 3);
 					const int canopyIntensity = (hCanopy * canopyEntityDens) >> 8;
 
-					const int cloudIntensity = std::max(floorIntensity, canopyIntensity);
-					if (cloudIntensity < cfg.intensityCutoff)
+					const bool hasLayer2Puff = (canopyIntensity >= canopyCutoff);
+					const bool hasLayer1Mist = (floorIntensity >= floorCutoff);
+					if (!hasLayer2Puff && !hasLayer1Mist)
 						continue;
 
 					uint8_t shade = litCore;
-					if (canopyIntensity >= floorIntensity - 6) {
+					int rawAlpha = 0;
+
+					if (hasLayer2Puff) {
+						// Layer 2 (Elevated 3D Cloud Puff) is visible on top of Layer 1:
+						// Highlight with bright litCrest on its sunlit dome so it stands out clearly over Layer 1!
 						if (canopyLight == 2) {
 							shade = litCrest;
 						} else if (canopyLight == 0) {
-							shade = litTrough;
-						} else {
 							shade = litCore;
+						} else {
+							shade = (canopyIntensity > canopyCutoff + 18) ? litCrest : litCore;
 						}
+						rawAlpha = canopyIntensity + 36;
 					} else {
-						const int hCanopyOverhead = gCachedCanopyFog[(v2Idx - 2) & 0xFF][(u2Idx - 2) & 0xFF];
-						shade = (hCanopyOverhead > cfg.intensityCutoff + 24) ? litTrough : litCore;
+						// Layer 1 (Low Ground Mist Bed) is visible through the open gaps between Layer 2 clouds:
+						// Check if an adjacent Layer 2 cloud puff (2 texels NW) casts a 3D drop-shadow onto Layer 1!
+						const int hCanopyCaster = (static_cast<int>(gCachedCanopyFog[(v2Idx - 2) & 0xFF][(u2Idx - 2) & 0xFF]) * canopyEntityDens) >> 8;
+						if (hCanopyCaster >= canopyCutoff + 6) {
+							shade = litTrough; // Dark 3D drop-shadow cast by Layer 2 cloud onto Layer 1 mist!
+							rawAlpha = floorIntensity + 20;
+						} else {
+							shade = (floorIntensity < floorCutoff + 14) ? litTrough : litCore;
+							rawAlpha = floorIntensity;
+						}
 					}
 
 					const int bayer = (((sx & 1) + bayerRowShift) * 4) - 6;
-					const int normCloud = ((cloudIntensity - cfg.intensityCutoff) * invSpan) >> 8;
-					const int alpha = ((normCloud * wallFade) >> 8) + bayer;
-					if (alpha < 14)
+					const int alpha = ((rawAlpha * wallFade) >> 8) + bayer;
+					if (alpha < 54)
 						continue;
 
 					uint8_t &dst = out[{ sx, sy }];
-					if (alpha > 205) {
+					if (alpha > 192) {
 						dst = cfg.allowHeavyBlend ? Blend37(shade, dst) : Blend31(shade, dst);
-					} else if (alpha > 155) {
-						dst = cfg.allowHeavyBlend ? Blend31(shade, dst) : Blend25(shade, dst);
-					} else if (alpha > 110) {
+					} else if (alpha > 156) {
+						dst = Blend31(shade, dst);
+					} else if (alpha > 124) {
 						dst = Blend25(shade, dst);
-					} else if (alpha > 68) {
+					} else if (alpha > 96) {
 						dst = Blend19(shade, dst);
-					} else if (alpha > 34) {
+					} else if (alpha > 72) {
 						dst = Blend12(shade, dst);
 					} else {
 						dst = Blend6(shade, dst);
@@ -1292,6 +1656,10 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 
 	if (hasBubblesOnTile) {
 		DrawCavesLavaBubblesTile(out, tilePosition, targetBufferPosition, safeLavaPx);
+	}
+
+	if (IsInsectSwarmLevel() && lightIndex < LightsMax && gSwarmCountOnTile[tx][ty] > 0) {
+		DrawInsectSwarmOnTile(out, tilePosition, targetBufferPosition, lightIndex);
 	}
 }
 
