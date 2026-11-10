@@ -1,2 +1,8 @@
 # Note: Keep misc/ un-ignored here in AI Studio so misc/dx-eternity.exe syncs to the File Explorer
 # misc/
+SDL2-devel-2.32.0-mingw.tar.gz
+libsodium-1.0.20-mingw.tar.gz
+public/
+libsodium-win64/
+libsodium-win32/
+SDL2-2.32.0/

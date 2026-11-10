@@ -43,15 +43,17 @@
   - Verify `handle.read()` in `LoadFileInMem()` (`Source/engine/load_file.hpp`) before returning the buffer so failed reads never pass uninitialized memory to CLX font/sprite renderers
   - Disable `SDL_DYNAMIC_API` (`SDL_DYNAMIC_API=0`) in `Source/CMakeLists.txt` so static SDL2 builds never load an older `SDL2.dll` from the game directory, and keep `SetChunkStream()` at the 16 MB threshold so `dtowne.wav` (~31 MB) streams asynchronously
 - [x] **Phase 10: Level Palette Randomizer (`DevilutionXRandomizer` Integration)**
-  - Enabled by default (`[Graphics] Randomize Level Palettes` in `diablo.ini`) with live in-game `ESC -> Options -> Randomize Palettes: ON/OFF` toggle (`Source/gamemenu.cpp`, `Source/gmenu.cpp`) that switches between the floor's vanilla palette and its locked deterministic randomized palette without rerolling on the spot
+  - Enabled by default (`[Graphics] Randomize Level Palettes` in `diablo.ini`, description `"Randomizes dungeon level color palettes."`) with live callback (`OptionRandomizePaletteChanged`) that switches between the floor's vanilla palette and its locked deterministic randomized palette without rerolling on the spot
   - Preserves vanilla Town (`levels\towndata\town.pal`) unconditionally and supports direct loose folder lookup (`paths::BasePath() + relativePath`) in `FindAsset()` (`Source/engine/assets.cpp`)
   - Deterministic per-floor Murmur3 seed hashing (`glSeedTbl[currlevel]`, `currlevel`, `leveltype`) that never perturbs the gameplay `GenerateRnd` LCG
   - Multi-hue quality filter (`IsMultiHuePalette`) across `DevilutionXRandomizer` dungeon `.pal` presets (`l1_1..66.pal`, `l2_1..74.pal`, `l3_1..58.pal`, `l4_1..46.pal`, `l5_1..74.pal`, `l6_1..79.pal`) that automatically skips flat 1-color monochrome presets, plus a split-complementary procedural shift fallback that preserves neutral greyscale stone
-- [x] **Phase 11: 3D Isometric Volumetric Ground Fog & Interactive Entity Dispersion**
-  - Pure 8-bit LUT-blended 3D isometric ground-hugging fog/smoke (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`) with precomputed seamless `256x256` 3-octave FBM turbulence and zero `GenerateRnd` usage
-  - Biome-specific dungeon presets: Cathedral spectral mist, Catacombs bone-beige mist, Caves sulfurous thermal steam, Hell dark charcoal/soot rising smoke (`isDarkSmoke`), Crypt thick ancient tomb fog (`50%` core blend), and Nest humid spore haze
-  - 20 Hz interactive dispersion simulation (`UpdateGroundFogSimulation`) where moving players, charging/attacking monsters, and missiles carve directional wakes and swirl velocities into `gFogGrid`, plus knee-high entity submersion (`DrawGroundFogEntitySubmersion`) over player/monster boots and lower legs
+- [x] **Phase 11: 3D Isometric Volumetric Ground Fog Overhaul & Interactive Entity Dispersion (Batch 1)**
+  - Pure 8-bit LUT-blended (`Blend50`, `Blend37`, `Blend25`, `Blend19`, `Blend12`) 3D isometric ground-hugging fog/smoke (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`) with domain-warped 3-octave FBM billowing (`gFogNoiseLut` + `gFogWarpLut`), 3-tier internal shading (`crestShade`, `coreShade`, `troughShade`), vertical parallax loft, and zero `GenerateRnd` usage
+  - Smooth 8-direction corner vertex wall fadeout (`gFogCornerWeight`) and exact floor-vs-wall isometric Z-order (`DrawGroundFogTileBase` rendered inside `DrawCell` immediately after `mt[0..1]` floor microtiles and before `mt[2..15]` walls/arches/pillars)
+  - Per-floor deterministic `spawnChancePercent` (`GetFloorFogSeedHash`, defaulted to `100%` for testing) and 6 visually distinct biome presets (Cathedral cold spectral mist, Catacombs dusty bone-beige mist, Caves warm orange/beige volcanic steam, Hell dark soot & ember-lit infernal smoke, Crypt heavy 50%-blend ectoplasmic tomb fog, and Nest toxic yellow-orange spore miasma), including rising steam/smoke/spores over flat lava/acid/water pools (`IsFogPassableTile`)
+  - Single-tile entity & missile wake dispersion (`CarveSingleTileEntityWake`) strictly localized to each entity's exact occupied tile `(tile.x, tile.y)`, paired with a soft `28x16` radially attenuated elliptical boot submersion pass (`DrawGroundFogEntitySubmersion`)
   - Toggleable in `Settings -> Graphics -> Ground Fog` (`sgOptions.Graphics.groundFog`, default `ON`)
 - [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**
 - [ ] **Phase 13 (Deferred / Final Phase): Dynamic Lighting Pipeline**
+
 

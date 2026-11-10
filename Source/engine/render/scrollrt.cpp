@@ -17,6 +17,7 @@
 #include "engine/dx.h"
 #include "engine/render/clx_render.hpp"
 #include "engine/render/dun_render.hpp"
+#include "engine/render/ground_fog.h"
 #include "engine/render/text_render.hpp"
 #include "engine/render/weather.h"
 #include "engine/trn.hpp"
@@ -587,6 +588,7 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 			}
 		}
 		DrawWeatherGroundTile(out, tilePosition, targetBufferPosition);
+		DrawGroundFogTileBase(out, tilePosition, targetBufferPosition, LightTableIndex);
 		targetBufferPosition.y -= TILE_HEIGHT;
 	}
 
@@ -805,9 +807,11 @@ void DrawDungeon(const Surface &out, Point tilePosition, Point targetBufferPosit
 	int8_t playerId = dPlayer[tilePosition.x][tilePosition.y];
 	if (static_cast<size_t>(playerId - 1) < Players.size()) {
 		DrawPlayerHelper(out, Players[playerId - 1], tilePosition, targetBufferPosition);
+		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
 	}
 	if (dMonster[tilePosition.x][tilePosition.y] != 0) {
 		DrawMonsterHelper(out, tilePosition, targetBufferPosition);
+		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
 	}
 	DrawMissile(out, tilePosition, targetBufferPosition, false);
 	DrawObject(out, tilePosition, targetBufferPosition, false);

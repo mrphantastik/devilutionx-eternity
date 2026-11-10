@@ -1027,7 +1027,7 @@ GraphicsOptions::GraphicsOptions()
     , hardwareCursorMaxSize("Hardware Cursor Maximum Size", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI | (HardwareCursorSupported() ? OptionEntryFlags::None : OptionEntryFlags::Invisible), N_("Hardware Cursor Maximum Size"), N_("Maximum width / height for the hardware cursor. Larger cursors fall back to software."), 128, { 0, 64, 128, 256, 512 })
 #endif
     , showFPS("Show FPS", OptionEntryFlags::None, N_("Show FPS"), N_("Displays the FPS in the upper left corner of the screen."), false)
-    , randomizePalette("Randomize Level Palettes", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes town and dungeon color palettes using DevilutionXRandomizer presets."), true)
+    , randomizePalette("Randomize Level Palettes", OptionEntryFlags::None, N_("Randomize Level Palettes"), N_("Randomizes dungeon level color palettes."), true)
     , groundFog("Ground Fog", OptionEntryFlags::None, N_("Ground Fog"), N_("Enables 3D isometric volumetric ground fog that parts and swirls around moving characters and monsters."), true)
 {
 	resolution.SetValueChangedCallback(ResizeWindow);

@@ -384,12 +384,11 @@
 
 ## Phase 10: Level Palette Randomizer (`DevilutionXRandomizer` Integration in Graphics & In-Game Options)
 
-### 10.1 Graphics Option Default ON & Live In-Game `ESC -> Options` Toggle (`Source/options.h`, `Source/options.cpp`, `Source/gamemenu.cpp`, `Source/gmenu.cpp`)
+### 10.1 Graphics Option Default ON (`Source/options.h`, `Source/options.cpp`, `Source/gamemenu.cpp`)
 - **File:** `Source/options.h` & `Source/options.cpp`
-  - Added `OptionEntryBoolean randomizePalette` (`"Randomize Level Palettes"`, label `"Randomize Level Palettes"`, default `true`) at the end of `GraphicsOptions` (`Settings -> Graphics`, persisted in `diablo.ini` under `[Graphics] Randomize Level Palettes`).
-  - Registered `OptionRandomizePaletteChanged()` value-changed callback (`if (!gbRunGame || setlevel || leveltype == DTYPE_TOWN) return; LoadRndLvlPal(leveltype); ApplyGamma(logical_palette, orig_palette, 256); SetFadeLevel(256);`) so toggling `Randomize Level Palettes` on/off mid-game switches between the floor's vanilla palette and its deterministic randomized palette without rerolling on the spot.
-- **File:** `Source/gamemenu.cpp` & `Source/gmenu.cpp`
-  - Added `Randomize Palettes: ON / OFF` (`GamemenuRandomizePalette`) to the in-game `ESC -> Options` menu (`sgOptionsMenu[4]`) and updated `GetActiveMenuTop()`, `GetActiveMenuItemHeight()`, and `logoY` in `Source/gmenu.cpp` (`sgCurrentMenuIdx > 7`) so all 8 menu items fit cleanly above the HUD panel.
+  - Added `OptionEntryBoolean randomizePalette` (`"Randomize Level Palettes"`, label `"Randomize Level Palettes"`, description `"Randomizes dungeon level color palettes."`, default `true`) at the end of `GraphicsOptions` (`Settings -> Graphics`, persisted in `diablo.ini` under `[Graphics] Randomize Level Palettes`).
+  - Registered `OptionRandomizePaletteChanged()` value-changed callback (`if (!gbRunGame || setlevel || leveltype == DTYPE_TOWN) return; LoadRndLvlPal(leveltype); ApplyGamma(logical_palette, orig_palette, 256); SetFadeLevel(256);`) so toggling `Randomize Level Palettes` on/off switches between the floor's vanilla palette and its deterministic randomized palette without rerolling on the spot.
+  - Kept the in-game `ESC -> Options` menu (`Source/gamemenu.cpp`) clean at 7 items (`Music`, `Sound`, `Reverb`, `Headphone Mode (HRTF)`, `Gamma`, `Speed`, `Previous Menu`) while `Randomize Level Palettes` remains accessible in `Settings -> Graphics`.
 
 ### 10.2 Loose `BasePath()` Lookup, Vanilla Town Palette, `IsMultiHuePalette` Filter & Procedural Split-Complementary Fallback (`Source/engine/assets.cpp`, `Source/engine/palette.h`, `Source/engine/palette.cpp`)
 - **File:** `Source/engine/assets.cpp`
@@ -425,27 +424,31 @@
 
 ---
 
-## Phase 11: 3D Isometric Volumetric Ground Fog & Interactive Entity Dispersion
+## Phase 11: 3D Isometric Volumetric Ground Fog Overhaul & Interactive Entity Dispersion (Batch 1)
 
-### 11.1 Volumetric Ground Fog Engine (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`, `Source/CMakeLists.txt`)
-- **Pure 8-Bit Native Pipeline & Deterministic RNG Safety:**
-  - Operates directly on DevilutionX's 8-bit `Surface` (`PalSurface`), `paletteTransparencyLookup` (`Blend50`, `Blend25`, `Blend12`, `Blend6`), and `LightTables[LightTableIndex]` with zero dependency on dynamic lighting or `gbuffer`.
-  - Uses a precomputed seamless `256x256` 3-octave FBM value-noise lookup table (`gFogNoiseLut`) and integer hashing (`FastHash2D`) so `GenerateRnd()` is never called and level seeds/multiplayer stay 100% deterministic.
-- **Per-Dungeon Biome Presets (`GetLevelFogConfig`):**
-  - **Cathedral (`DTYPE_CATHEDRAL`):** Low/medium density (`maxDensity = 150`), cold spectral mist (`PAL16_GRAY + 5` / `PAL16_GRAY + 9`).
-  - **Catacombs (`DTYPE_CATACOMBS`):** Medium density (`maxDensity = 170`), dusty bone-beige & eerie gray mist (`PAL16_BEIGE + 6` / `PAL16_GRAY + 9`).
-  - **Caves (`DTYPE_CAVES`):** Medium density (`maxDensity = 175`), rising sulfurous thermal steam (`driftDivY = -60`).
-  - **Hell (`DTYPE_HELL`):** Thick charcoal/blackish rising smoke (`maxDensity = 210`, `PAL16_GRAY + 14` / `PAL16_GRAY + 12`, `isDarkSmoke = true`, `allowHeavyBlend = true`, fast upward thermal draft `driftDivY = -40`).
-  - **Crypt (`DTYPE_CRYPT`):** High density (`maxDensity = 250`), thick ancient tomb fog (`PAL16_GRAY + 3` / `PAL16_GRAY + 7`, `allowHeavyBlend = true` with `50%` core banks).
-  - **Nest / Hive (`DTYPE_NEST`):** Medium density (`maxDensity = 165`), humid yellowish-gray spore haze (`PAL16_YELLOW + 8` / `PAL16_GRAY + 9`).
+### 11.1 8-Direction Corner Wall Fadeout, Correct `DrawCell` Isometric Z-Order & Domain-Warped 3D Billowing (`Source/engine/render/ground_fog.h`, `Source/engine/render/ground_fog.cpp`, `Source/engine/render/scrollrt.cpp`)
+- **8-Direction Corner Vertex Wall Weights (`gFogCornerWeight`):**
+  - Precomputes a vertex wall weight `gFogCornerWeight[vx][vy]` (`0..256`) at every 4-tile grid intersection `(vx, vy)` in `ResetGroundFogLevel()`. If any of the 4 tiles meeting at `(vx, vy)` (`(vx-1, vy-1)`, `(vx, vy-1)`, `(vx-1, vy)`, `(vx, vy)`) is a solid wall, that corner's weight is forced to `0`, and adjacent open corners are attenuated when diagonal neighbors are walls.
+  - Bilinearly interpolates `c00`, `c10`, `c01`, `c11` across each `64x32` diamond (`u, v in 0..256`), guaranteeing fog smoothly fades to `0%` opacity before touching walls in all 8 directions (N, S, E, W, NE, NW, SE, SW) with zero sharp cutoffs along North-West or North-East walls.
+- **Exact Floor-vs-Wall Isometric Z-Order (`DrawCell` in `Source/engine/render/scrollrt.cpp`):**
+  - `DrawGroundFogTileBase(out, tilePosition, targetBufferPosition, LightTableIndex)` is invoked inside `DrawCell()` immediately after floor microtiles `mt[0]` and `mt[1]` (and `DrawWeatherGroundTile()`) finish, and **before** `targetBufferPosition.y -= TILE_HEIGHT` and the upper wall/pillar/arch microtile loop `mt[2..15]` run. Upper wall segments, archways, pillars, and doors naturally draw on top of the floor fog instead of being covered by it.
+- **Domain-Warped 3D Volumetric Billow FBM & 3-Tier Internal Shading:**
+  - Combines a seamless `256x256` 3-octave FBM noise LUT (`gFogNoiseLut`) with a low-frequency 2-octave domain-warp curl LUT (`gFogWarpLut`) and a smoothstep S-curve (`billow = (n * n * (384 - n)) >> 16`) so fog forms distinct 3D billowing crests, mid-volume banks, and translucent troughs with vertical parallax loft (`loftOffset`).
+  - Uses 5-tier LUT blending (`Blend50`, `Blend37`, `Blend25`, `Blend19`, `Blend12`) and 3-tier internal shading (`crestShade`, `coreShade`, `troughShade`) so billowing crests catch brighter highlights (or warm ember underglow in Hell) while troughs recede into darker shadows.
 
-### 11.2 20 Hz Interactive Dispersion Simulation & Dual Isometric Render Passes (`Source/diablo.cpp`, `Source/engine/render/scrollrt.cpp`, `Source/options.h`, `Source/options.cpp`)
-- **20 Hz Interactive Entity Wake & Swirl Advection (`UpdateGroundFogSimulation` & `ResetGroundFogLevel`):**
-  - Hooked `ResetGroundFogLevel()` into `LoadGameLevel()` and `UpdateGroundFogSimulation()` into `GameLogic()` in `Source/diablo.cpp`.
-  - Maintains a per-tile `FogCell` grid (`density`, `velX`, `velY`) that relaxes and regrows organically around the camera while carving directional wakes and tangential swirl velocities when players walk, monsters move/charge/attack, or missiles/explosions fly across tiles.
-- **Two-Pass Isometric Rendering (`DrawDungeon` in `Source/engine/render/scrollrt.cpp`):**
-  - **Pass 1 (`DrawGroundFogTileBase`):** Called right after `DrawCell()`, rendering the bilinearly interpolated, dual-layer scrolling FBM ground fog blanket across walkable `64x32` floor diamonds with smooth wall feathering and local `dLight` attenuation.
-  - **Pass 2 (`DrawGroundFogEntitySubmersion`):** Called immediately after `DrawPlayerHelper()` and `DrawMonsterHelper()`, rendering knee-high (`20 px`) vertically attenuated volumetric fog wisps over the boots and lower legs of players and monsters standing in the fog.
-- **Graphics Settings Option (`Source/options.h`, `Source/options.cpp`):**
-  - Added `OptionEntryBoolean groundFog` (`"Ground Fog"`, default `true`) to `GraphicsOptions` (`Settings -> Graphics -> Ground Fog`).
+### 11.2 Per-Floor Spawn Chance, 6 Distinct Biome Variants (Including Lava/Acid Pools), Single-Tile Entity Wake & Elliptical Boot Submersion
+- **Deterministic Per-Floor `spawnChancePercent` (`GetFloorFogSeedHash`):**
+  - Added `uint8_t spawnChancePercent` to `LevelFogConfig` (default `100%` across all 6 dungeon types for testing) evaluated deterministically per floor in `ResetGroundFogLevel()` from `glSeedTbl[currlevel]` (`GetFloorFogSeedHash() % 100U < cfg.spawnChancePercent`) without calling `GenerateRnd()`.
+- **6 Visually Distinct Dungeon Biome Presets (`GetLevelFogConfig`) & Flat Liquid/Lava/Acid Pool Support (`IsFogPassableTile`):**
+  - `IsFogPassableTile()` checks `!TileHasAny(dPiece[x][y], TileProperties::Solid)` and allows flat non-walkable liquid/lava/acid pool tiles (`DPieceMicros[piece].mt[2..15] == 0`) in Caves, Hell, and Hive to emit rising steam, smoke, and spore haze.
+  - **Cathedral (`DTYPE_CATHEDRAL`):** Cold spectral mist (`maxDensity = 165`, `PAL16_GRAY + 3` crest / `PAL16_GRAY + 6` core / `PAL16_GRAY + 10` trough, slow horizontal drift).
+  - **Catacombs (`DTYPE_CATACOMBS`):** Dusty bone-beige crypt mist (`maxDensity = 185`, `PAL16_BEIGE + 3` crest / `PAL16_BEIGE + 6` core / `PAL16_GRAY + 9` trough).
+  - **Caves (`DTYPE_CAVES`):** Warm volcanic/geothermal steam (`maxDensity = 195`, `PAL16_ORANGE + 4` warm crest / `PAL16_BEIGE + 5` core / `PAL16_GRAY + 8` trough, rising thermal draft `driftDivY = -42`, `turbulenceAmp = 24`).
+  - **Hell (`DTYPE_HELL`):** Infernal dark soot & ember-lit smoke (`maxDensity = 225`, `PAL16_RED + 5` ember-lit trough underglow / `PAL16_GRAY + 12` charcoal core / `PAL16_GRAY + 14` dark soot crest, `isInfernalSmoke = true`, `allowHeavyBlend = true`, fast rising draft `driftDivY = -28`, `turbulenceAmp = 28`).
+  - **Crypt (`DTYPE_CRYPT`):** Heavy ancient tomb fog (`maxDensity = 250`, `PAL16_YELLOW + 3` pale ectoplasmic crest / `PAL16_BEIGE + 5` core / `PAL16_GRAY + 8` trough, `allowHeavyBlend = true` with `50%` opacity core banks).
+  - **Nest / Hive (`DTYPE_NEST`):** Humid toxic yellowish-orange bio-spore miasma (`maxDensity = 190`, `PAL16_YELLOW + 4` bright spore crest / `PAL16_YELLOW + 7` core / `PAL16_ORANGE + 10` deep bio-haze trough).
+- **Single-Tile Entity & Spell Dispersion (`CarveSingleTileEntityWake`) & Elliptical Boot Submersion (`DrawGroundFogEntitySubmersion`):**
+  - `CarveSingleTileEntityWake()` strictly modifies **only the single occupied tile `(tile.x, tile.y)`** of each player, monster, or missile, applying a soft interior diamond bell curve (`centerWeight`) in `SampleTileFogState()` so adjacent tiles are never cleared.
+  - Replaced the `48x20` rectangular entity submersion box with a tight `28x16` (`RadiusX = 14, RadiusY = 8`) radially attenuated ellipse over player/monster boots (`DrawGroundFogEntitySubmersion`), eliminating visible rectangular fog patches around sprites.
+
 
