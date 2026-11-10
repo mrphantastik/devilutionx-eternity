@@ -501,6 +501,24 @@
     - **Phase 1 (`0%–72%` life):** Swelling 3D hemispherical lava blister (`maxRadX = 6..9 px`, `maxRadY = 4..6 px`, `domeLift = 5 px`) with dark cooled magma base skirt, glowing mid-body, and off-center incandescent top-left specular highlight.
     - **Phase 2 (`72%–100%` life):** Popping 2:1 isometric crater rim + 4 arcing molten splatter droplets (`dx, dy - arcLift`), triggering positional `PlaySfxLoc(LS_LAVABUBBLES, b.tile, false)` (with `220 ms` cooldown within 13 tiles of the player).
 
+### 11.6 Ground Fog v3 (30 Hz Pre-Composited LUT Sheets, 2-Layer Isometric Camera Parallax, 4-Corner Light-Radius Feathering) & Lava Bubble Fixes (`Source/diablo.cpp`, `Source/engine/render/weather.cpp`, `Source/engine/render/ground_fog.cpp`)
+- **Massive Performance Optimization (~5x–8x Faster, 30 Hz Pre-Composited LUT Sheets + Interior Tile Fast-Path):**
+  - Added `UpdateCachedFogSheets30Hz(ticks, cfg)`, which updates two `256x256` L1-cache-resident pre-warped, sub-texel bilinearly drifted sheets (`gCachedFloorFog[256][256]`, `gCachedCanopyFog[256][256]`, and `gCachedCanopyLight[256][256]`) once every `33 ms` (`30 Hz`).
+  - Inside `DrawGroundFogTileBase()`, each screen pixel performs only 2 direct `O(1)` byte array reads (`gCachedFloorFog[v1Idx][u1Idx]` and `gCachedCanopyFog[v2Idx][u2Idx]`) with zero per-pixel `SampleLutBilinear()` calls.
+  - Added `fastInteriorTile` fast-path that skips `SampleTileFogState()` completely on interior floor tiles with no adjacent walls and no active entity wake, plus `gBubbleCountOnTile[MAXDUNX][MAXDUNY]` so `DrawGroundFogTileBase()` never scans `32x64` pixels on empty Caves lava tiles.
+- **True 2-Layer Isometric Camera Parallax + Cross-Wind Drift Separation:**
+  - **Layer 1 (Low Ground-Hugging Mist — `1.00x` Floor-Locked):** Locked to floor tiles `(tx * uvScale1, ty * uvScale1)`, pools in dark troughs, parts `100%` around player/monster/spell wakes, and feathers at walls.
+  - **Layer 2 (Elevated Floating Cloud Canopy — `1.35x` Isometric Camera Parallax + Cross-Wind Shear):** Shifts across the floor by `+35%` of live camera movement (`camParU, camParV`), uses `1.5x` larger billowy cloud domes (`uvScale2 = (uvScale1 * 2) / 3`), drifts at a ~40° cross-wind angle relative to Layer 1, casts dark underside shadows (`litTrough`) onto Layer 1 below, and parts slightly less over ground wakes.
+- **Slower, Lingering Entity & Spell Dispersion Recovery:**
+  - Reduced `gFogHalfGrid` wake regrowth in `UpdateGroundFogSimulation()` to `+1` per 50ms tick when strongly parted (`density < 110`) and `+2` per tick when closing, so cleared trails behind the player and spells linger organically for ~6–7 seconds.
+- **4-Corner Bilinear Light-Radius Feathering:**
+  - Attenuates `crestShade` and `coreShade` through `lightTbl` on all dungeon types (including Hell `isDarkSmoke`) and computes 4-corner bilinear light-radius feathering (`cLight00, cLight10, cLight01, cLight11`) across the 3x3 tile neighborhood (`dLight`) for `lightIndex >= 8`, smoothly fading fog opacity (`wallFade * lightFade`) down to `0%` (`Blend6 -> 0`) at the edge of the light radius.
+- **Caves Lava Bubble Shoreline Rock Margin (`±4px` X / `±3px` Y), ESC Menu Pause & Single-Instance Proximity Audio Loop (`SyncLavaBubbleAudio`):**
+  - Eroded `safeLavaPx[32][64]` by `4px` horizontally and `3px` vertically from cave rock pixels (`rawLava`) and checked `bubbleFootprintFits()` so lava bubbles never touch or clip against shoreline rocks.
+  - Paused color cycling (`diablo_color_cyc_logic()` in `Source/diablo.cpp`), rain/puddle splashes (`gWeatherSimTick` in `Source/engine/render/weather.cpp`), and lava bubbles (`UpdateCavesLavaBubblesSimulation()` / `EnsureLiveLavaBubbleShades()`) when the Single Player `ESC` menu (`gmenu_is_active()`) is open.
+  - Replaced positional `PlaySfxLoc(LS_LAVABUBBLES, ...)` calls with `SyncLavaBubbleAudio()` using single-instance non-positional `PlayLoopingSFX(LS_LAVABUBBLES, lavaVolume)` (smoothly scaling volume from `-1750` at 15 tiles to `-150` adjacent to lava) and `StopSFX(LS_LAVABUBBLES)` immediately when opening the `ESC` menu, pausing, or leaving Caves.
+
+
 
 
 

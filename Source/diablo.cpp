@@ -3060,7 +3060,7 @@ void diablo_color_cyc_logic()
 	if (!*sgOptions.Graphics.colorCycling)
 		return;
 
-	if (PauseMode != 0)
+	if (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active()))
 		return;
 
 	if (leveltype == DTYPE_CAVES) {

@@ -39,6 +39,7 @@
 #include "effects.h"
 #include "engine/palette.h"
 #include "engine/random.hpp"
+#include "gmenu.h"
 #include "levels/gendung.h"
 #include "options.h"
 #include "player.h"
@@ -106,6 +107,7 @@ bool gHasGameRainRoll = false;
 RainMode gCurrentRainMode = RainMode::Light;
 float gHeavyBlend = 0.0F; // 0.0 = Light Rain, 1.0 = Heavy Rain
 uint32_t gLastWeatherTick = 0;
+uint32_t gWeatherSimTick = 0;
 
 // Dungeon time tracking (weather intensity only changes after >= 60s in a dungeon)
 bool gInDungeon = false;
@@ -459,7 +461,8 @@ void InitSteamFogBank(SteamFogBank &bank, size_t index)
 
 void SyncWeatherAudio()
 {
-	if (!gbRunGame || !gbSoundOn || PauseMode != 0 || leveltype != DTYPE_TOWN || setlevel) {
+	const bool isMenuPaused = (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active()));
+	if (!gbRunGame || !gbSoundOn || isMenuPaused || leveltype != DTYPE_TOWN || setlevel) {
 		StopSFX(LS_RAINLIGHT);
 		StopSFX(LS_RAINHEAVY);
 		return;
@@ -807,6 +810,7 @@ void ResetWeatherState()
 	StopSFX(LS_RAINHEAVY);
 	StopSFX(LS_THUNDERA);
 	StopSFX(LS_THUNDERB);
+	StopSFX(LS_LAVABUBBLES);
 	gHasPrevCamPos = false;
 	gSecondaryFlashTick = 0;
 	gPendingThunderTick = 0;
@@ -841,6 +845,9 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		}
 		gWeatherInitialized = true;
 		gLastWeatherTick = nowTick;
+		if (gWeatherSimTick == 0) {
+			gWeatherSimTick = nowTick;
+		}
 	}
 
 	// Update active lightning flash envelope (60ms peak flash + 55ms afterglow decay)
@@ -858,12 +865,14 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	if (dtMs > 100) {
 		dtMs = 33;
 	}
-	const float dt = static_cast<float>(dtMs) * 0.001F;
 
-	if (PauseMode != 0) {
+	if (PauseMode != 0 || (!gbIsMultiplayer && gmenu_is_active())) {
 		SyncWeatherAudio();
 		return;
 	}
+
+	gWeatherSimTick += dtMs;
+	const float dt = static_cast<float>(dtMs) * 0.001F;
 
 	// Keep gHeavyBlend locked to the session's active gCurrentRainMode
 	gHeavyBlend = (gCurrentRainMode == RainMode::Heavy) ? 1.0F : 0.0F;
@@ -1056,7 +1065,7 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 	if (tileCenterX < -32 || tileCenterX >= out.w() + 32 || tileCenterY < -16 || tileCenterY >= out.h() + 32)
 		return;
 
-	const uint32_t nowTick = gLastWeatherTick != 0 ? gLastWeatherTick : SDL_GetTicks();
+	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
 
 	// 1. Render localized puddle splash animations (-35% count, -50% size, +50% transparency)
 	const uint32_t tileSeed = FastHash(
