@@ -33,7 +33,8 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 - **Tristram Rainfall:** Ambient rainfall layer across town.
 - **Interactive Ground Fog**: Volumetric mist that reacts to  movement.
 
-<img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain">
+<p align="center"><img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain"></p>
+
 ---
 
 ### Seamless Dungeon Branches: Hive & Crypt
