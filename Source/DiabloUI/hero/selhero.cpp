@@ -229,6 +229,7 @@ void SelheroClassSelectorFocus(int value)
 	gfnHeroStats(static_cast<unsigned int>(heroClass), &defaults);
 
 	selhero_heroInfo.level = 1;
+	selhero_heroInfo.herorank = 0;
 	selhero_heroInfo.heroclass = heroClass;
 	selhero_heroInfo.strength = defaults.strength;
 	selhero_heroInfo.magic = defaults.magic;
@@ -358,6 +359,7 @@ void SelheroLoadSelect(int value)
 		selhero_isSavegame = false;
 
 		SelheroFree();
+		gSaveNumber = selhero_heroInfo.saveNumber;
 		LoadBackgroundArt("ui_art\\selgame");
 		selgame_GameSelection_Select(0);
 	}

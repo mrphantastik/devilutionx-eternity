@@ -32,6 +32,7 @@ int *gdwPlayerId;
 _difficulty nDifficulty;
 int nTickRate;
 int heroLevel;
+uint8_t heroRank;
 
 static GameData *m_game_data;
 extern int provider;
@@ -285,8 +286,10 @@ void selgame_GameSelection_Focus(int value)
  */
 bool UpdateHeroLevel(_uiheroinfo *pInfo)
 {
-	if (pInfo->saveNumber == gSaveNumber)
+	if (pInfo->saveNumber == gSaveNumber) {
 		heroLevel = pInfo->level;
+		heroRank = pInfo->herorank;
+	}
 
 	return true;
 }
@@ -296,6 +299,8 @@ void selgame_GameSelection_Select(int value)
 	selgame_enteringGame = true;
 	selgame_selectedGame = value;
 
+	heroLevel = 1;
+	heroRank = 0;
 	gfnHeroInfo(UpdateHeroLevel);
 
 	selgame_FreeVectors();
@@ -328,12 +333,13 @@ void selgame_GameSelection_Select(int value)
 		SDL_Rect rect4 = { (Sint16)(uiPosition.x + 299), (Sint16)(uiPosition.y + 211), 295, 35 };
 		vecSelGameDialog.push_back(std::make_unique<UiArtText>(_("Select Difficulty").data(), rect4, UiFlags::AlignCenter | UiFlags::FontSize30 | UiFlags::ColorUiSilver, 3));
 
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Normal"), DIFF_NORMAL));
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Nightmare"), DIFF_NIGHTMARE));
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Hell"), DIFF_HELL));
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Torment"), DIFF_TORMENT));
+		const UiFlags tormentFlags = (heroRank >= 3) ? UiFlags::ColorUiGold : UiFlags::ColorUiSilver;
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Normal"), DIFF_NORMAL, UiFlags::ColorUiGold));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Nightmare"), DIFF_NIGHTMARE, UiFlags::ColorUiGold));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Hell"), DIFF_HELL, UiFlags::ColorUiGold));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Torment"), DIFF_TORMENT, tormentFlags));
 
-		vecSelGameDialog.push_back(std::make_unique<UiList>(vecSelGameDlgItems, vecSelGameDlgItems.size(), uiPosition.x + 300, (uiPosition.y + 279), 295, 26, UiFlags::AlignCenter | UiFlags::FontSize24 | UiFlags::ColorUiGold));
+		vecSelGameDialog.push_back(std::make_unique<UiList>(vecSelGameDlgItems, vecSelGameDlgItems.size(), uiPosition.x + 300, (uiPosition.y + 279), 295, 26, UiFlags::AlignCenter | UiFlags::FontSize24));
 
 		SDL_Rect rect5 = { (Sint16)(uiPosition.x + 299), (Sint16)(uiPosition.y + 427), 140, 35 };
 		vecSelGameDialog.push_back(std::make_unique<UiArtTextButton>(_("OK"), &UiFocusNavigationSelect, rect5, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
@@ -403,7 +409,11 @@ void selgame_Diff_Focus(int value)
 		break;
 	case DIFF_TORMENT:
 		CopyUtf8(selgame_Label, _("Torment"), sizeof(selgame_Label));
-		CopyUtf8(selgame_Description, _("Torment Difficulty\nThe forces of Hell have been empowered beyond mortal comprehension, but the spoils of battle roll their maximum potential."), sizeof(selgame_Description));
+		if (heroRank < 3) {
+			CopyUtf8(selgame_Description, _("Torment Difficulty (Locked)\nYour character must defeat Diablo on Hell difficulty to unlock Torment.\n\nThe forces of Hell have been empowered beyond mortal comprehension, but the spoils of battle roll their maximum potential."), sizeof(selgame_Description));
+		} else {
+			CopyUtf8(selgame_Description, _("Torment Difficulty\nThe forces of Hell have been empowered beyond mortal comprehension, but the spoils of battle roll their maximum potential."), sizeof(selgame_Description));
+		}
 		break;
 	}
 	CopyUtf8(selgame_Description, WordWrapString(selgame_Description, DESCRIPTION_WIDTH), sizeof(selgame_Description));
@@ -411,7 +421,14 @@ void selgame_Diff_Focus(int value)
 
 bool IsDifficultyAllowed(int value)
 {
-	if (value == 0 || (value == 1 && heroLevel >= 20) || (value == 2 && heroLevel >= 30) || (value == 3 && heroLevel >= 35)) {
+	if (value == DIFF_TORMENT && heroRank < 3) {
+		selgame_Free();
+		UiSelOkDialog(title, _("Your character must defeat Diablo on Hell difficulty before you can enter a game of Torment difficulty.").data(), false);
+		selgame_Init();
+		return false;
+	}
+
+	if (!selhero_isMultiPlayer || value == 0 || (value == 1 && heroLevel >= 20) || (value == 2 && heroLevel >= 30) || (value == 3 && heroLevel >= 35)) {
 		return true;
 	}
 
@@ -431,7 +448,7 @@ bool IsDifficultyAllowed(int value)
 
 void selgame_Diff_Select(int value)
 {
-	if (selhero_isMultiPlayer && !IsDifficultyAllowed(vecSelGameDlgItems[value]->m_value)) {
+	if (!IsDifficultyAllowed(vecSelGameDlgItems[value]->m_value)) {
 		selgame_GameSelection_Select(0);
 		return;
 	}

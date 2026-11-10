@@ -540,9 +540,10 @@
 
 ## 12. Torment Difficulty (`DIFF_TORMENT`): Blanket Hell + 30% Monster Stats & Maxed-Out Item Drops
 
-### 12.1 `DIFF_TORMENT` Enum, UI, Portrait Skulls & Save/Load Persistence (`Source/levels/gendung.h`, `Source/DiabloUI/multi/selgame.cpp`, `Source/automap.cpp`, `Source/discord/discord.cpp`, `Source/loadsave.cpp`)
+### 12.1 `DIFF_TORMENT` Enum, UI, Hell Diablo Unlock Requirement, Portrait Skulls & Save/Load Persistence (`Source/levels/gendung.h`, `Source/DiabloUI/hero/selhero.cpp`, `Source/DiabloUI/multi/selgame.cpp`, `Source/automap.cpp`, `Source/discord/discord.cpp`, `Source/loadsave.cpp`)
 - Added `DIFF_TORMENT` after `DIFF_HELL` in `enum _difficulty : uint8_t` (`Source/levels/gendung.h`) and updated `DIFF_LAST = DIFF_TORMENT`, automatically enabling the 4th difficulty skull indicator on hero selection portraits (`selhero.cpp`) when Diablo is slain on Torment.
 - Added `"Torment"` to the Create Game difficulty selection list (`selgame_GameSelection_Select`, shifting list Y from `+ 282` to `+ 279` so all 4 difficulty tiers fit cleanly), game info panel (`selgame_GameSelection_Focus`), difficulty description (`selgame_Diff_Focus`), multiplayer level requirement (`heroLevel >= 35` in `IsDifficultyAllowed`), automap difficulty readout (`Source/automap.cpp`), and Discord Rich Presence (`DifficultyStrs` in `Source/discord/discord.cpp`).
+- **Locked Until Hell Diablo Is Defeated (`heroRank >= 3`):** Tracked `heroRank = pInfo->herorank` (`player.pDiabloKillLevel`) in `UpdateHeroLevel` (`Source/DiabloUI/multi/selgame.cpp`) and synced `gSaveNumber = selhero_heroInfo.saveNumber` before Single Player difficulty selection (`Source/DiabloUI/hero/selhero.cpp`). Characters that have not yet slain Diablo on Hell difficulty (`heroRank < 3`) see `"Torment"` grayed out (`UiFlags::ColorUiSilver`) with a locked requirement note in the description panel, and attempting to start or join a Torment game in Single Player or Multiplayer displays `"Your character must defeat Diablo on Hell difficulty before you can enter a game of Torment difficulty."`.
 - Updated `LoadGame()` (`Source/loadsave.cpp`) to validate `sgGameInitInfo.nDifficulty <= DIFF_LAST`.
 
 ### 12.2 Blanket Hell + 30% Monster Offensive & Defensive Stats (`Source/monster.h`, `Source/monster.cpp`, `Source/missiles.cpp`, `Source/loadsave.cpp`)
