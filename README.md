@@ -54,7 +54,7 @@ Pairs the Rogue’s visuals and voice lines with the cut *Hellfire* Barbarian cl
 ---
 
 ### Hell Difficulty Endgame Drops
-Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three new unique artifacts:
+Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop chance** for each of three new uniques:
 
 | Item | Base | Stats & Mechanics |
 | :--- | :--- | :--- |
