@@ -680,9 +680,12 @@ void GetBookSpell(Item &item, int lvl)
 	}
 }
 
+static bool g_tormentMaxRoll = false;
+
 int RndPL(int param1, int param2)
 {
-	return param1 + GenerateRnd(param2 - param1 + 1);
+	int r = param1 + GenerateRnd(param2 - param1 + 1);
+	return g_tormentMaxRoll ? param2 : r;
 }
 
 int CalculateToHitBonus(int level)
@@ -717,6 +720,8 @@ int CalculateToHitBonus(int level)
 
 int SaveItemPower(const Player &player, Item &item, ItemPower &power)
 {
+	g_tormentMaxRoll = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) || ((item.dwBuff & CF_TORMENT) != 0);
+
 	if (!gbIsHellfire) {
 		if (power.type == IPL_TARGAC) {
 			power.param1 = 1 << power.param1;
@@ -1307,10 +1312,12 @@ void GetStaffSpell(const Player &player, Item &item, int lvl, bool onlygood)
 			s = static_cast<int8_t>(SpellID::Firebolt);
 	}
 
+	const bool isTormentItem = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) || ((item.dwBuff & CF_TORMENT) != 0);
 	int minc = GetSpellData(bs).sStaffMin;
 	int maxc = GetSpellData(bs).sStaffMax - minc + 1;
 	item._iSpell = bs;
-	item._iCharges = minc + GenerateRnd(maxc);
+	int chargeRoll = minc + GenerateRnd(maxc);
+	item._iCharges = isTormentItem ? GetSpellData(bs).sStaffMax : chargeRoll;
 	item._iMaxCharges = item._iCharges;
 
 	item._iMinMag = GetSpellData(bs).minInt;
@@ -1515,8 +1522,11 @@ void GetUniqueItem(const Player &player, Item &item, _unique_items uid)
 
 void ItemRndDur(Item &item)
 {
-	if (item._iDurability > 0 && item._iDurability != DUR_INDESTRUCTIBLE)
-		item._iDurability = GenerateRnd(item._iMaxDur / 2) + (item._iMaxDur / 4) + 1;
+	if (item._iDurability > 0 && item._iDurability != DUR_INDESTRUCTIBLE) {
+		const bool isTormentItem = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) || ((item.dwBuff & CF_TORMENT) != 0);
+		int durRoll = GenerateRnd(item._iMaxDur / 2) + (item._iMaxDur / 4) + 1;
+		item._iDurability = isTormentItem ? item._iMaxDur : durRoll;
+	}
 }
 
 int GetItemBLevel(int lvl, item_misc_id miscId, bool onlygood, bool uper15)
@@ -2941,6 +2951,8 @@ void CalcPlrInv(Player &player, bool loadgfx)
 void InitializeItem(Item &item, _item_indexes itemData)
 {
 	auto &pAllItem = AllItemsList[static_cast<size_t>(itemData)];
+	const uint32_t preservedTorment = item.dwBuff & CF_TORMENT;
+	const bool isTormentItem = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) || (preservedTorment != 0);
 
 	// zero-initialize struct
 	item = {};
@@ -2953,7 +2965,7 @@ void InitializeItem(Item &item, _item_indexes itemData)
 	item._iClass = pAllItem.iClass;
 	item._iMinDam = pAllItem.iMinDam;
 	item._iMaxDam = pAllItem.iMaxDam;
-	item._iAC = pAllItem.iMinAC;
+	item._iAC = isTormentItem ? pAllItem.iMaxAC : pAllItem.iMinAC;
 	item._iMiscId = pAllItem.iMiscId;
 	item._iSpell = pAllItem.iSpell;
 
@@ -2975,6 +2987,8 @@ void InitializeItem(Item &item, _item_indexes itemData)
 	item.IDidx = static_cast<_item_indexes>(itemData);
 	if (gbIsHellfire)
 		item.dwBuff |= CF_HELLFIRE;
+	if (isTormentItem)
+		item.dwBuff |= CF_TORMENT;
 }
 
 void GenerateNewSeed(Item &item)
@@ -3187,7 +3201,9 @@ void GetItemAttrs(Item &item, _item_indexes itemData, int lvl)
 	item._iClass = baseItemData.iClass;
 	item._iMinDam = baseItemData.iMinDam;
 	item._iMaxDam = baseItemData.iMaxDam;
-	item._iAC = baseItemData.iMinAC + GenerateRnd(baseItemData.iMaxAC - baseItemData.iMinAC + 1);
+	const bool isTormentItem = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) || ((item.dwBuff & CF_TORMENT) != 0);
+	int acRoll = baseItemData.iMinAC + GenerateRnd(baseItemData.iMaxAC - baseItemData.iMinAC + 1);
+	item._iAC = isTormentItem ? baseItemData.iMaxAC : acRoll;
 	item._iFlags = baseItemData.iFlags;
 	item._iMiscId = baseItemData.iMiscId;
 	item._iSpell = baseItemData.iSpell;
@@ -3202,6 +3218,8 @@ void GetItemAttrs(Item &item, _item_indexes itemData, int lvl)
 	item.IDidx = itemData;
 	if (gbIsHellfire)
 		item.dwBuff |= CF_HELLFIRE;
+	if (isTormentItem)
+		item.dwBuff |= CF_TORMENT;
 	item._iPrePower = IPL_INVALID;
 	item._iSufPower = IPL_INVALID;
 
@@ -3225,6 +3243,10 @@ void GetItemAttrs(Item &item, _item_indexes itemData, int lvl)
 		break;
 	case DIFF_HELL:
 		rndv = 5 * (itemlevel + 32) + GenerateRnd(10 * (itemlevel + 32));
+		break;
+	case DIFF_TORMENT:
+		(void)GenerateRnd(10 * (itemlevel + 32));
+		rndv = ((15 * (itemlevel + 32) - 1) * 130) / 100;
 		break;
 	}
 	if (leveltype == DTYPE_HELL)

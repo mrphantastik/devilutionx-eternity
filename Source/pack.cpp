@@ -330,6 +330,7 @@ void UnPackItem(const ItemPack &packedItem, const Player &player, Item &item, bo
 		RecreateEar(item, ic, iseed, ivalue & 0xFF, heroName);
 	} else {
 		item = {};
+		item.dwBuff = packedItem.dwBuff;
 		RecreateItem(player, item, idx, SDL_SwapLE16(packedItem.iCreateInfo), SDL_SwapLE32(packedItem.iSeed), SDL_SwapLE16(packedItem.wValue), isHellfire);
 		item._iIdentified = (packedItem.bId & 1) != 0;
 		if (item._iMagical == ITEM_QUALITY_UNIQUE && item._iUid == UITEM_KADISFURY) {
@@ -341,6 +342,7 @@ void UnPackItem(const ItemPack &packedItem, const Player &player, Item &item, bo
 		}
 		item._iMaxCharges = clamp<int>(packedItem.bMCh, 0, item._iMaxCharges);
 		item._iCharges = clamp<int>(packedItem.bCh, 0, item._iMaxCharges);
+		item.dwBuff |= (packedItem.dwBuff & CF_TORMENT);
 	}
 }
 

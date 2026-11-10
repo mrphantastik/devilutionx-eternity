@@ -692,6 +692,17 @@ void LoadMonster(LoadHelper *file, Monster &monster, MonsterConversionData *mons
 	monster.minDamageSpecial = file->NextLE<uint8_t>();
 	monster.maxDamageSpecial = file->NextLE<uint8_t>();
 	monster.armorClass = file->NextLE<uint8_t>();
+	if (sgGameInitInfo.nDifficulty == DIFF_TORMENT && monsterConversionData == nullptr && !monster.isPlayerMinion()) {
+		constexpr uint16_t HellAcBonus = 80;
+		monster.minDamage = ((4 * monster.data().minDamage + 6) * 130) / 100;
+		monster.maxDamage = ((4 * monster.data().maxDamage + 6) * 130) / 100;
+		monster.minDamageSpecial = ((4 * monster.data().minDamageSpecial + 6) * 130) / 100;
+		monster.maxDamageSpecial = ((4 * monster.data().maxDamageSpecial + 6) * 130) / 100;
+		uint16_t baseAc = monster.data().armorClass;
+		if (monster.isUnique() && UniqueMonstersData[static_cast<size_t>(monster.uniqueType)].customArmorClass != 0)
+			baseAc = UniqueMonstersData[static_cast<size_t>(monster.uniqueType)].customArmorClass;
+		monster.armorClass = ((baseAc + HellAcBonus) * 130) / 100;
+	}
 	file->Skip(1); // Alignment
 	monster.resistance = file->NextLE<uint16_t>();
 	file->Skip(2); // Alignment
@@ -1478,15 +1489,15 @@ void SaveMonster(SaveHelper *file, Monster &monster, MonsterConversionData *mons
 		file->WriteLE<uint8_t>(monsterConversionData->toHit);
 	else
 		file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.toHit(sgGameInitInfo.nDifficulty), std::numeric_limits<uint8_t>::max()))); // For backwards compatibility
-	file->WriteLE<uint8_t>(monster.minDamage);
-	file->WriteLE<uint8_t>(monster.maxDamage);
+	file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.minDamage, std::numeric_limits<uint8_t>::max())));
+	file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.maxDamage, std::numeric_limits<uint8_t>::max())));
 	if (monsterConversionData != nullptr)
 		file->WriteLE<uint8_t>(monsterConversionData->toHitSpecial);
 	else
 		file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.toHitSpecial(sgGameInitInfo.nDifficulty), std::numeric_limits<uint8_t>::max()))); // For backwards compatibility
-	file->WriteLE<uint8_t>(monster.minDamageSpecial);
-	file->WriteLE<uint8_t>(monster.maxDamageSpecial);
-	file->WriteLE<uint8_t>(monster.armorClass);
+	file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.minDamageSpecial, std::numeric_limits<uint8_t>::max())));
+	file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.maxDamageSpecial, std::numeric_limits<uint8_t>::max())));
+	file->WriteLE<uint8_t>(static_cast<uint8_t>(std::min<uint16_t>(monster.armorClass, std::numeric_limits<uint8_t>::max())));
 	file->Skip(1); // Alignment
 	file->WriteLE<uint16_t>(monster.resistance);
 	file->Skip(2); // Alignment
@@ -2398,7 +2409,7 @@ void LoadGame(bool firstflag)
 	LoadPlayer(file, myPlayer);
 	LoadExtLevels(myPlayer);
 
-	if (sgGameInitInfo.nDifficulty < DIFF_NORMAL || sgGameInitInfo.nDifficulty > DIFF_HELL)
+	if (sgGameInitInfo.nDifficulty < DIFF_NORMAL || sgGameInitInfo.nDifficulty > DIFF_LAST)
 		sgGameInitInfo.nDifficulty = DIFF_NORMAL;
 
 	for (int i = 0; i < giNumberQuests; i++)

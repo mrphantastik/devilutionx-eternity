@@ -56,9 +56,8 @@
   - Batch 2 Caves Lava Variants (`ApplyCavesLavaVariant`: Orange Molten Magma, Sulfuric Golden-Yellow, Poison/Toxic Green, and Bioluminescent Cyan-Teal on `DTYPE_CAVES` palette indices `1..31`), 3D Boiling Lava Bubbles with `±4px` X / `±3px` Y shoreline rock margin (`safeLavaPx`), uninterrupted single-instance proximity-volume `LS_LAVABUBBLES` loop (`SyncLavaBubbleAudio`), and Single Player `ESC` menu (`gmenu_is_active()`) freeze
   - Batch 3 Hive & Catacombs 3D Insect Swarms (`DTYPE_CATACOMBS` & `DTYPE_NEST`): 3 visual variants (Carrion Flies, Plague Locusts, Blood Wasps/Mites), slow room drift, single-instance proximity `LS_INSECTBUZZ` loop (`sfx\misc\InsectBuzz.wav`), and permanent walk-through dispersal (`LS_INSECTDISPERSE` -> `sfx\misc\InsectBuzzDisperse.wav`)
   - Application & Window Title (`DevilutionX: Eternity`), Main Menu version string (`DX-Eternity Beta v0.7d`), and Discord Rich Presence (`-DDISCORD_INTEGRATION=ON`, `discord_game_sdk.dll`, keeping `SetDetails("DevilutionX: Eternity")` in both Menu and Game)
-- [ ] **Phase 12 (Upcoming): Torment Difficulty & Cut Content Restoration**
-- [ ] **Phase 13 (Deferred / Final Phase): Dynamic Lighting Pipeline**
-
-
-
-
+- [x] **Phase 12: Torment Difficulty (`DIFF_TORMENT`): Blanket Hell + 30% Monster Stats & Maxed-Out Item Drops**
+  - `DIFF_TORMENT` difficulty tier (`DIFF_LAST = DIFF_TORMENT`, 4th hero portrait skull indicator, Create Game UI menu, Automap readout, Discord Rich Presence, and multiplayer level 35 entry requirement)
+  - Blanket `+30%` over Hell monster stats (`maxHitPoints`, `uint16_t` `minDamage`/`maxDamage`/`minDamageSpecial`/`maxDamageSpecial`/`armorClass`, `toHit`, `toHitSpecial`, `level`, `exp`, fixed-damage monster missiles, and Hell Diablo unique drops) with unclamped `uint16_t` restoration on save/load
+  - Maxed-out item stat rolls (`CF_TORMENT` flag on `Item::dwBuff`, max `RndPL` rolls for all magic prefixes/suffixes/To-Hit bonuses/unique powers, max base `iMaxAC`, max staff spell charges `sStaffMax`, `100%` starting durability ` _iMaxDur`, and `+30%` max gold piles) while preserving exact `GenerateRnd` LCG call parity
+- [ ] **Phase 13 (Deferred / Final Phase): Cut Content Restoration & Dynamic Lighting Pipeline**

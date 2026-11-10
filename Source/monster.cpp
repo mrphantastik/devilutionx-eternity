@@ -199,6 +199,20 @@ void InitMonster(Monster &monster, Direction rd, size_t typeIndex, Point positio
 		monster.maxDamageSpecial = 4 * monster.maxDamageSpecial + 6;
 		monster.armorClass += HellAcBonus;
 		monster.resistance = monster.data().resistanceHell;
+	} else if (sgGameInitInfo.nDifficulty == DIFF_TORMENT) {
+		monster.maxHitPoints = 4 * monster.maxHitPoints;
+		if (gbIsHellfire)
+			monster.maxHitPoints += (gbIsMultiplayer ? 200 : 100) << 6;
+		else
+			monster.maxHitPoints += 200 << 6;
+		monster.maxHitPoints = (monster.maxHitPoints * 130) / 100;
+		monster.hitPoints = monster.maxHitPoints;
+		monster.minDamage = ((4 * monster.minDamage + 6) * 130) / 100;
+		monster.maxDamage = ((4 * monster.maxDamage + 6) * 130) / 100;
+		monster.minDamageSpecial = ((4 * monster.minDamageSpecial + 6) * 130) / 100;
+		monster.maxDamageSpecial = ((4 * monster.maxDamageSpecial + 6) * 130) / 100;
+		monster.armorClass = ((monster.armorClass + HellAcBonus) * 130) / 100;
+		monster.resistance = monster.data().resistanceHell;
 	}
 }
 
@@ -899,7 +913,7 @@ void SpawnLoot(Monster &monster, bool sendmsg)
 			SpawnItem(monster, monster.position.tile, sendmsg);
 	} else if (!monster.isPlayerMinion()) {
 		SpawnItem(monster, monster.position.tile, sendmsg);
-		if (monster.type().type == MT_DIABLO && sgGameInitInfo.nDifficulty == DIFF_HELL) {
+		if (monster.type().type == MT_DIABLO && IsAnyOf(sgGameInitInfo.nDifficulty, DIFF_HELL, DIFF_TORMENT)) {
 			if (GenerateRnd(50) == 0)
 				SpawnUnique(UITEM_KADISFURY, monster.position.tile + Displacement { 1, 1 }, std::nullopt, sendmsg);
 			if (GenerateRnd(50) == 0)
@@ -3198,6 +3212,18 @@ void PrepareUniqueMonst(Monster &monster, UniqueMonsterType monsterType, size_t 
 		monster.maxDamage = 4 * monster.maxDamage + 6;
 		monster.minDamageSpecial = 4 * monster.minDamageSpecial + 6;
 		monster.maxDamageSpecial = 4 * monster.maxDamageSpecial + 6;
+	} else if (sgGameInitInfo.nDifficulty == DIFF_TORMENT) {
+		monster.maxHitPoints = 4 * monster.maxHitPoints;
+		if (gbIsHellfire)
+			monster.maxHitPoints += (gbIsMultiplayer ? 200 : 100) << 6;
+		else
+			monster.maxHitPoints += 200 << 6;
+		monster.maxHitPoints = (monster.maxHitPoints * 130) / 100;
+		monster.hitPoints = monster.maxHitPoints;
+		monster.minDamage = ((4 * monster.minDamage + 6) * 130) / 100;
+		monster.maxDamage = ((4 * monster.maxDamage + 6) * 130) / 100;
+		monster.minDamageSpecial = ((4 * monster.minDamageSpecial + 6) * 130) / 100;
+		monster.maxDamageSpecial = ((4 * monster.maxDamageSpecial + 6) * 130) / 100;
 	}
 
 	InitTRNForUniqueMonster(monster);
@@ -3210,6 +3236,8 @@ void PrepareUniqueMonst(Monster &monster, UniqueMonsterType monsterType, size_t 
 			monster.armorClass += NightmareAcBonus;
 		} else if (sgGameInitInfo.nDifficulty == DIFF_HELL) {
 			monster.armorClass += HellAcBonus;
+		} else if (sgGameInitInfo.nDifficulty == DIFF_TORMENT) {
+			monster.armorClass = ((monster.armorClass + HellAcBonus) * 130) / 100;
 		}
 	}
 
@@ -4284,11 +4312,14 @@ void PrintMonstHistory(int mt)
 		} else if (sgGameInitInfo.nDifficulty == DIFF_HELL) {
 			minHP = 4 * minHP + hpBonusHell;
 			maxHP = 4 * maxHP + hpBonusHell;
+		} else if (sgGameInitInfo.nDifficulty == DIFF_TORMENT) {
+			minHP = ((4 * minHP + hpBonusHell) * 130) / 100;
+			maxHP = ((4 * maxHP + hpBonusHell) * 130) / 100;
 		}
 		AddPanelString(fmt::format(fmt::runtime(_("Hit Points: {:d}-{:d}")), minHP, maxHP));
 	}
 	if (MonsterKillCounts[mt] >= 15) {
-		int res = (sgGameInitInfo.nDifficulty != DIFF_HELL) ? MonstersData[mt].resistance : MonstersData[mt].resistanceHell;
+		int res = IsNoneOf(sgGameInitInfo.nDifficulty, DIFF_HELL, DIFF_TORMENT) ? MonstersData[mt].resistance : MonstersData[mt].resistanceHell;
 		if ((res & (RESIST_MAGIC | RESIST_FIRE | RESIST_LIGHTNING | IMMUNE_MAGIC | IMMUNE_FIRE | IMMUNE_LIGHTNING)) == 0) {
 			AddPanelString(_("No magic resistance"));
 		} else {
@@ -4786,6 +4817,8 @@ unsigned int Monster::toHit(_difficulty difficulty) const
 		baseToHit += NightmareToHitBonus;
 	} else if (difficulty == DIFF_HELL) {
 		baseToHit += HellToHitBonus;
+	} else if (difficulty == DIFF_TORMENT) {
+		baseToHit = ((baseToHit + HellToHitBonus) * 130) / 100;
 	}
 
 	return baseToHit;
@@ -4802,6 +4835,8 @@ unsigned int Monster::toHitSpecial(_difficulty difficulty) const
 		baseToHitSpecial += NightmareToHitBonus;
 	} else if (difficulty == DIFF_HELL) {
 		baseToHitSpecial += HellToHitBonus;
+	} else if (difficulty == DIFF_TORMENT) {
+		baseToHitSpecial = ((baseToHitSpecial + HellToHitBonus) * 130) / 100;
 	}
 
 	return baseToHitSpecial;

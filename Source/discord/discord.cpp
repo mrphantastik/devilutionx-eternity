@@ -99,7 +99,7 @@ std::string GetDetailString()
 
 std::string GetStateString()
 {
-	constexpr std::array<const char *, 3> DifficultyStrs = { N_("Normal"), N_("Nightmare"), N_("Hell") };
+	constexpr std::array<const char *, 4> DifficultyStrs = { N_("Normal"), N_("Nightmare"), N_("Hell"), N_("Torment") };
 	const string_view difficultyStr = _(DifficultyStrs[sgGameInitInfo.nDifficulty]);
 	const string_view charClassStr = _(PlayersData[static_cast<int>(MyPlayer->_pClass)].className);
 	return fmt::format("{} ({}) - Level {} {}", GetLocationString(), difficultyStr, tracked_data.playerLevel, charClassStr);

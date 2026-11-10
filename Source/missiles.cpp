@@ -1670,7 +1670,7 @@ void AddChargedBoltBow(Missile &missile, AddMissileParameter &parameter)
 	Point dst = parameter.dst;
 	missile._mirnd = GenerateRnd(15) + 1;
 	if (missile._micaster != TARGET_MONSTERS) {
-		missile._midam = 15;
+		missile._midam = (sgGameInitInfo.nDifficulty == DIFF_TORMENT) ? 19 : 15;
 	}
 
 	if (missile.position.start == dst) {
@@ -1908,6 +1908,8 @@ void AddFireWall(Missile &missile, AddMissileParameter &parameter)
 	missile._midam = GenerateRndSum(10, 2) + 2;
 	missile._midam += missile._misource >= 0 ? Players[missile._misource]._pLevel : currlevel; // BUGFIX: missing parenthesis around ternary (fixed)
 	missile._midam <<= 3;
+	if ((missile._micaster == TARGET_PLAYERS || missile._misource < 0) && sgGameInitInfo.nDifficulty == DIFF_TORMENT)
+		missile._midam = (missile._midam * 130) / 100;
 	UpdateMissileVelocity(missile, parameter.dst, 16);
 	int i = missile._mispllvl;
 	missile._mirange = 10;
@@ -2639,7 +2641,7 @@ void AddChargedBolt(Missile &missile, AddMissileParameter &parameter)
 {
 	Point dst = parameter.dst;
 	missile._mirnd = GenerateRnd(15) + 1;
-	missile._midam = (missile._micaster == TARGET_MONSTERS) ? (GenerateRnd(Players[missile._misource]._pMagic / 4) + 1) : 15;
+	missile._midam = (missile._micaster == TARGET_MONSTERS) ? (GenerateRnd(Players[missile._misource]._pMagic / 4) + 1) : ((sgGameInitInfo.nDifficulty == DIFF_TORMENT) ? 19 : 15);
 
 	if (missile.position.start == dst) {
 		dst += parameter.midir;
@@ -3641,6 +3643,8 @@ void ProcessAcidSplate(Missile &missile)
 		missile._miDelFlag = true;
 		int monst = missile._misource;
 		int dam = (Monsters[monst].data().level >= 2 ? 2 : 1);
+		if (sgGameInitInfo.nDifficulty == DIFF_TORMENT)
+			dam = (dam * 130 + 50) / 100;
 		AddMissile(missile.position.tile, { 0, 0 }, Direction::South, MissileID::AcidPuddle, TARGET_PLAYERS, monst, dam, missile._mispllvl);
 	} else {
 		PutMissile(missile);

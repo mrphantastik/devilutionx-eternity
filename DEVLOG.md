@@ -536,9 +536,20 @@
   - Rolls with equal `1/3` probability per New Game session (`TownWeatherKind::Rain`, `Snow`, `AshStorm`) locked for the entire game session, toggling only between `Light` and `Heavy` after `>= 1` minute in a dungeon.
   - `SnowHeavy` renders a wind-driven blizzard with gale-force lateral shear and diagonal flurry streaks (`SnowLight.wav` / `SnowHeavy.wav`), while `AshStorm` mixes swirling dark ash flakes with glowing orange-red volcanic ember cinders (`AshStormLight.wav` / `AshStormHeavy.wav`) and settling ground particles (`DrawSingleSettlingSnowFlake`).
 
+---
 
+## 12. Torment Difficulty (`DIFF_TORMENT`): Blanket Hell + 30% Monster Stats & Maxed-Out Item Drops
 
+### 12.1 `DIFF_TORMENT` Enum, UI, Portrait Skulls & Save/Load Persistence (`Source/levels/gendung.h`, `Source/DiabloUI/multi/selgame.cpp`, `Source/automap.cpp`, `Source/discord/discord.cpp`, `Source/loadsave.cpp`)
+- Added `DIFF_TORMENT` after `DIFF_HELL` in `enum _difficulty : uint8_t` (`Source/levels/gendung.h`) and updated `DIFF_LAST = DIFF_TORMENT`, automatically enabling the 4th difficulty skull indicator on hero selection portraits (`selhero.cpp`) when Diablo is slain on Torment.
+- Added `"Torment"` to the Create Game difficulty selection list (`selgame_GameSelection_Select`, shifting list Y from `+ 282` to `+ 279` so all 4 difficulty tiers fit cleanly), game info panel (`selgame_GameSelection_Focus`), difficulty description (`selgame_Diff_Focus`), multiplayer level requirement (`heroLevel >= 35` in `IsDifficultyAllowed`), automap difficulty readout (`Source/automap.cpp`), and Discord Rich Presence (`DifficultyStrs` in `Source/discord/discord.cpp`).
+- Updated `LoadGame()` (`Source/loadsave.cpp`) to validate `sgGameInitInfo.nDifficulty <= DIFF_LAST`.
 
+### 12.2 Blanket Hell + 30% Monster Offensive & Defensive Stats (`Source/monster.h`, `Source/monster.cpp`, `Source/missiles.cpp`, `Source/loadsave.cpp`)
+- Promoted `Monster::minDamage`, `maxDamage`, `minDamageSpecial`, `maxDamageSpecial`, and `armorClass` from `uint8_t` to `uint16_t` (`Source/monster.h`) so high-tier monsters and bosses do not overflow `255` when scaled by `+30%` over Hell (`* 130 / 100`).
+- Scaled monster `maxHitPoints`/`hitPoints`, `minDamage`/`maxDamage`, `minDamageSpecial`/`maxDamageSpecial`, `armorClass`, `toHit`, `toHitSpecial`, `level` (which drives hit/block/stun/regen/drop-tier formulas), `exp`, monster kill history (`PrintMonstHistory`), and fixed-damage monster missiles (`AddChargedBolt`, `AddChargedBoltBow`, `AddFireWall`, `ProcessAcidSplate`) to **130% of their `DIFF_HELL` values**, while using `resistanceHell` and enabling Hell Diablo's exclusive unique loot drops (`SpawnLoot`).
+- Preserved binary save file compatibility in `SaveMonster` (clamping `uint16_t` damage/AC fields to `uint8_t`) while recalculating unclamped `uint16_t` Torment monster damage and AC in `LoadMonster`.
 
-
-
+### 12.3 Maxed-Out Item Stat Rolls on `DIFF_TORMENT` (`Source/items.h`, `Source/items.cpp`, `Source/pack.cpp`, `Source/msg.cpp`)
+- Added `CF_TORMENT = 1 << 1` to `enum icreateinfo_flag2` (`Item::dwBuff`) and preserved it across `InitializeItem`, `GetItemAttrs`, `UnPackItem` (`Source/pack.cpp`), and network `RecreateItem` (`Source/msg.cpp`) so items generated in Torment retain their maxed-out stats across save/load and character unpacking.
+- Every rolled item stat (`RndPL` via `SaveItemPower` for all magic prefixes, suffixes, To-Hit bonuses, and unique item variable powers; `GetItemAttrs` for base armor class `iMaxAC` and `+30%` max gold piles; `GetStaffSpell` for `sStaffMax` charges; `ItemRndDur` for full `100%` `item._iMaxDur` starting durability) still consumes its exact `GenerateRnd(...)` call so LCG state and `GetTranslatedItemNameMagical` never desync, and returns the **maximum possible roll**.
