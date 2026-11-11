@@ -62,6 +62,7 @@ bool gNoiseInitialized = false;
 bool gLevelHasFog = false;
 
 std::array<std::array<uint8_t, 256>, 256> gFogNoiseLut;
+std::array<std::array<uint8_t, 256>, 256> gFogCanopyNoiseLut;
 std::array<std::array<uint8_t, 256>, 256> gFogWarpLut;
 
 uint32_t gLastFogSheetUpdateTick = 0;
@@ -77,27 +78,27 @@ std::array<std::array<int8_t, 256>, 256> gCachedCanopySlope;
  * to 0 Pure Black and gets stuck in quantization fixed-points, causing black blotches
  * and contour rings).
  * Tiers 0..5 correspond to:
- *   0: ~6.25%  (1/16 fg + 15/16 bg)
- *   1: ~12.5%  (2/16 fg + 14/16 bg)
- *   2: ~18.75% (3/16 fg + 13/16 bg)
- *   3: ~25.0%  (4/16 fg + 12/16 bg)
- *   4: ~31.25% (5/16 fg + 11/16 bg)
- *   5: ~37.5%  (6/16 fg + 10/16 bg)
+ *   0: ~12.5% (2/16 fg + 14/16 bg)
+ *   1: ~25.0% (4/16 fg + 12/16 bg)
+ *   2: ~37.5% (6/16 fg + 10/16 bg)
+ *   3: ~50.0% (8/16 fg +  8/16 bg)
+ *   4: ~62.5% (10/16 fg + 6/16 bg)
+ *   5: ~75.0% (12/16 fg + 4/16 bg)
  */
 uint8_t gFogAlphaLut[6][256][256];
-uint32_t gCachedFogLutPaletteVersion = 0xFFFFFFFFU;
 dungeon_type gCachedFogLutDtype = DTYPE_NONE;
+int gCachedFogLutLevel = -1;
 
 /**
- * 4x4 Ordered Bayer Dither Matrix (-14..+14):
+ * 4x4 Ordered Bayer Dither Matrix (-12..+12):
  * Smoothly feathers transitions across the 6 alpha blend tiers so contour edges
- * never exhibit rectilinear texel staircase blocks.
+ * never exhibit rectilinear staircase blocks.
  */
 constexpr int8_t Bayer4x4[4][4] = {
-	{ -14,   2, -10,   6 },
-	{  10,  -6,  14,  -2 },
-	{  -8,   8, -12,   4 },
-	{  12,  -4,   8,  -8 },
+	{ -12,   2,  -8,   6 },
+	{   8,  -6,  12,  -2 },
+	{  -6,   6, -10,   4 },
+	{  10,  -4,   6,  -8 },
 };
 
 std::array<std::array<FogHalfCell, HalfGridH>, HalfGridW> gFogHalfGrid;
@@ -105,105 +106,105 @@ std::array<std::array<bool, MAXDUNY>, MAXDUNX> gFogTilePassable;
 
 LevelFogConfig GetLevelFogConfig()
 {
-	// NOTE: Uses pure neutral PAL16_GRAY (240..254) for neutral mist/smoke across dungeons
-	// instead of PAL16_BEIGE (192..207), which is a salmon/reddish-tan ramp in Diablo 1's palette!
+	// Uses pure neutral PAL16_GRAY (240..254) for neutral mist/smoke across dungeons
+	// instead of PAL16_BEIGE (192..207), which is a salmon/reddish-tan ramp in Diablo 1's palette.
 	switch (leveltype) {
 	case DTYPE_CATHEDRAL:
 		// Cold spectral crypt mist (Layer 1) with bright 3D cloud puffs & clear drop-shadow (Layer 2)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/214,
-			/*intensityCutoff=*/74,
+			/*maxDensity=*/228,
+			/*intensityCutoff=*/52,
 			/*uvScale=*/44,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
-			/*allowHeavyBlend=*/false,
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/560,
-			/*driftDivY=*/820
+			/*driftDivX=*/520,
+			/*driftDivY=*/760
 		};
 	case DTYPE_CATACOMBS:
 		// Pale neutral bone-ash haze (Layer 1) with ghostly drifting crypt billows (Layer 2)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/212,
-			/*intensityCutoff=*/74,
+			/*maxDensity=*/226,
+			/*intensityCutoff=*/52,
 			/*uvScale=*/44,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
-			/*allowHeavyBlend=*/false,
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/600,
-			/*driftDivY=*/860
+			/*driftDivX=*/560,
+			/*driftDivY=*/800
 		};
 	case DTYPE_CAVES:
 		// Rising volcanic steam bed (Layer 1) with silver-gray thermal puffs (Layer 2)
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/214,
-			/*intensityCutoff=*/72,
+			/*maxDensity=*/228,
+			/*intensityCutoff=*/50,
 			/*uvScale=*/46,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
-			/*allowHeavyBlend=*/false,
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/460,
-			/*driftDivY=*/-520
+			/*driftDivX=*/440,
+			/*driftDivY=*/-480
 		};
 	case DTYPE_HELL:
 		// Rolling abyssal brimstone smoke: high-contrast smoky silver-ash crests (PAL16_GRAY + 2)
-		// over medium-dark charcoal smoke body (PAL16_GRAY + 7) and deep soot troughs (PAL16_GRAY + 12)
+		// over medium smoke body (PAL16_GRAY + 6) and dark charcoal drop-shadows
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/222,
-			/*intensityCutoff=*/72,
+			/*maxDensity=*/234,
+			/*intensityCutoff=*/50,
 			/*uvScale=*/44,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 7),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 12),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/460,
-			/*driftDivY=*/-500
+			/*driftDivX=*/440,
+			/*driftDivY=*/-460
 		};
 	case DTYPE_NEST:
-		// Pulsing toxic bio-spore miasma
+		// Pulsing bio-spore miasma
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/214,
-			/*intensityCutoff=*/74,
+			/*maxDensity=*/228,
+			/*intensityCutoff=*/52,
 			/*uvScale=*/48,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
-			/*allowHeavyBlend=*/false,
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/true,
-			/*driftDivX=*/520,
-			/*driftDivY=*/-600
+			/*driftDivX=*/480,
+			/*driftDivY=*/-560
 		};
 	case DTYPE_CRYPT:
 		// Thick ancient tomb-dust & ectoplasmic floor blanket
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/224,
-			/*intensityCutoff=*/70,
+			/*maxDensity=*/236,
+			/*intensityCutoff=*/48,
 			/*uvScale=*/42,
 			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 11),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
-			/*driftDivX=*/680,
-			/*driftDivY=*/900
+			/*driftDivX=*/600,
+			/*driftDivY=*/820
 		};
 	default:
 		return { false, 0, 0, 255, 44, 0, 0, 0, false, false, 600, 600 };
@@ -220,40 +221,36 @@ inline uint8_t ShadeFogColor(uint8_t baseColor, int lightIndex)
 	const int clampedLight = std::clamp(lightIndex, 0, 14);
 	if (baseColor >= PAL16_GRAY && baseColor < PAL16_GRAY + 15) {
 		const int baseStep = static_cast<int>(baseColor - PAL16_GRAY);
-		const int shadedStep = std::clamp(baseStep + ((clampedLight * (14 - baseStep)) / 15), 1, 14);
+		const int shadedStep = std::clamp(baseStep + ((clampedLight * (13 - baseStep)) / 16), 1, 13);
 		return static_cast<uint8_t>(PAL16_GRAY + shadedStep);
 	}
 	const uint8_t lit = LightTables[clampedLight][baseColor];
-	return (lit == 0) ? static_cast<uint8_t>(PAL16_GRAY + 14) : lit;
+	return (lit == 0) ? static_cast<uint8_t>(PAL16_GRAY + 13) : lit;
 }
 
 /**
- * Rebuilds the direct RGB 6-tier alpha LUT whenever the dungeon palette changes
- * (ignoring color-cycling ticks on 1..31 by skipping 1..31 in the best-match search,
- * and never snapping non-zero floor pixels to index 0 Pure Black or index 255 Pure White).
+ * Rebuilds the direct RGB 6-tier alpha LUT once per level load / static palette change
+ * (never on 50ms color-cycling ticks).
  */
 void EnsureFogAlphaLutUpdated()
 {
-	if (gCachedFogLutDtype == leveltype && gCachedFogLutPaletteVersion == pal_surface_palette_version)
+	static uint32_t sLastStaticPalHash = 0;
+	if (gCachedFogLutDtype == leveltype && gCachedFogLutLevel == currlevel && sLastStaticPalHash != 0)
 		return;
 
-	// If only color cycling rotated 1..31 on the same leveltype, we only need to rebuild once per level load
-	// Check whether static palette entries (32..254) actually changed:
-	static uint32_t sLastStaticPalHash = 0;
 	uint32_t staticHash = 2166136261U;
 	for (int i = 32; i < 255; i += 3) {
 		staticHash = (staticHash ^ orig_palette[i].r) * 16777619U;
 		staticHash = (staticHash ^ orig_palette[i].g) * 16777619U;
 		staticHash = (staticHash ^ orig_palette[i].b) * 16777619U;
 	}
-	gCachedFogLutPaletteVersion = pal_surface_palette_version;
-	if (gCachedFogLutDtype == leveltype && staticHash == sLastStaticPalHash)
-		return;
-
 	gCachedFogLutDtype = leveltype;
+	gCachedFogLutLevel = currlevel;
+	if (staticHash == sLastStaticPalHash)
+		return;
 	sLastStaticPalHash = staticHash;
 
-	// Search only static non-cycling indices (32..254) so fog never maps to index 0 (Pure Black),
+	// Search static non-cycling indices (32..254) so fog never maps to index 0 (Pure Black),
 	// index 255 (Pure White), or indices 1..31 (animated lava/water cycle).
 	for (int bg = 0; bg < 256; bg++) {
 		const int bgR = orig_palette[bg].r;
@@ -271,7 +268,7 @@ void EnsureFogAlphaLutUpdated()
 			const int fgB = orig_palette[fg].b;
 
 			for (int t = 0; t < 6; t++) {
-				const int w = t + 1; // 1..6 out of 16 (6.25% .. 37.5%)
+				const int w = (t + 1) * 2; // 2, 4, 6, 8, 10, 12 out of 16 (12.5% .. 75.0%)
 				const int targetR = (bgR * (16 - w) + fgR * w + 8) >> 4;
 				const int targetG = (bgG * (16 - w) + fgG * w + 8) >> 4;
 				const int targetB = (bgB * (16 - w) + fgB * w + 8) >> 4;
@@ -298,22 +295,22 @@ void EnsureFogAlphaLutUpdated()
 
 inline uint8_t ApplySoftFogBlend(uint8_t shade, uint8_t dst, int alpha, bool allowHeavy)
 {
-	if (alpha > 192) {
+	if (alpha > 188) {
 		return gFogAlphaLut[allowHeavy ? 5 : 4][dst][shade];
 	}
-	if (alpha > 152) {
+	if (alpha > 146) {
 		return gFogAlphaLut[4][dst][shade];
 	}
-	if (alpha > 114) {
+	if (alpha > 108) {
 		return gFogAlphaLut[3][dst][shade];
 	}
-	if (alpha > 78) {
+	if (alpha > 72) {
 		return gFogAlphaLut[2][dst][shade];
 	}
-	if (alpha > 44) {
+	if (alpha > 38) {
 		return gFogAlphaLut[1][dst][shade];
 	}
-	if (alpha > 14) {
+	if (alpha > 12) {
 		return gFogAlphaLut[0][dst][shade];
 	}
 	return dst;
@@ -366,34 +363,50 @@ void EnsureFogNoiseInitialized()
 		return;
 
 	for (int y = 0; y < 256; y++) {
+		// Built-in 2:1 isometric vertical foreshortening (wraps seamlessly for all even periods!)
+		const float fy = static_cast<float>(y) * 2.0F;
 		for (int x = 0; x < 256; x++) {
 			const float fx = static_cast<float>(x);
-			const float fy = static_cast<float>(y);
 
-			const float wx = ValueNoiseTileableFloat(fx, fy, 3, 901U) * 0.62F
-			    + ValueNoiseTileableFloat(fx, fy, 6, 902U) * 0.38F;
-			const float wy = ValueNoiseTileableFloat(fx, fy, 3, 903U) * 0.62F
-			    + ValueNoiseTileableFloat(fx, fy, 6, 904U) * 0.38F;
+			const float wx = ValueNoiseTileableFloat(fx, fy, 4, 901U) * 0.62F
+			    + ValueNoiseTileableFloat(fx, fy, 8, 902U) * 0.38F;
+			const float wy = ValueNoiseTileableFloat(fx, fy, 4, 903U) * 0.62F
+			    + ValueNoiseTileableFloat(fx, fy, 8, 904U) * 0.38F;
 			gFogWarpLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(wx * 255.0F + 0.5F), 0, 255));
 
-			// Continuous floating-point curl-warped coordinates (zero integer truncation!)
-			const float sx = fx + (wx - 0.5F) * 54.0F;
-			const float sy = fy + (wy - 0.5F) * 54.0F;
+			// 1. Layer 1 Noise (gFogNoiseLut): Broad, continuous, wispy ground-hugging mist carpet
+			const float sx1 = fx + (wx - 0.5F) * 48.0F;
+			const float sy1 = fy + (wy - 0.5F) * 48.0F;
 
-			const float n1 = ValueNoiseTileableFloat(sx, sy, 3, 101U);
-			const float n2 = ValueNoiseTileableFloat(sx, sy, 6, 202U);
-			const float n3 = ValueNoiseTileableFloat(sx, sy, 12, 303U);
-			const float n4 = ValueNoiseTileableFloat(sx, sy, 24, 404U);
+			const float n1 = ValueNoiseTileableFloat(sx1, sy1, 4, 101U);
+			const float n2 = ValueNoiseTileableFloat(sx1, sy1, 8, 202U);
+			const float n3 = ValueNoiseTileableFloat(sx1, sy1, 16, 303U);
+			const float n4 = ValueNoiseTileableFloat(sx1, sy1, 32, 404U);
 
-			// Smooth multi-octave FBM clouds + gentle wispy billows
-			const float fbm = n1 * 0.48F + n2 * 0.30F + n3 * 0.15F + n4 * 0.07F;
-			const float ridge = 1.0F - std::fabs(n2 * 2.0F - 1.0F);
-			const float ridgeSmooth = ridge * ridge * (3.0F - 2.0F * ridge);
-			const float raw = fbm * 0.78F + ridgeSmooth * 0.22F;
+			const float fbm1 = n1 * 0.45F + n2 * 0.32F + n3 * 0.15F + n4 * 0.08F;
+			const float ridge1 = 1.0F - std::fabs(n2 * 2.0F - 1.0F);
+			const float ridgeSmooth1 = ridge1 * ridge1 * (3.0F - 2.0F * ridge1);
+			const float raw1 = fbm1 * 0.72F + ridgeSmooth1 * 0.28F;
 
-			const float norm = std::clamp((raw - 0.35F) * 2.10F, 0.0F, 1.0F);
-			const float billow = norm * norm * (3.0F - 2.0F * norm);
-			gFogNoiseLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(billow * 255.0F + 0.5F), 0, 255));
+			const float norm1 = std::clamp((raw1 - 0.28F) * 1.95F, 0.0F, 1.0F);
+			const float mist1 = norm1 * norm1 * (3.0F - 2.0F * norm1);
+			gFogNoiseLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(mist1 * 255.0F + 0.5F), 0, 255));
+
+			// 2. Layer 2 Noise (gFogCanopyNoiseLut): Distinct, sculpted 3D cloud puff islands
+			// Uses independent seeds & higher-contrast billow shaping so Layer 2 forms separate
+			// floating 3D cloud banks with clear open gaps where Layer 1 mist & cast drop-shadows show through!
+			const float sx2 = fx + (wy - 0.5F) * 42.0F;
+			const float sy2 = fy - (wx - 0.5F) * 42.0F;
+
+			const float c1 = ValueNoiseTileableFloat(sx2, sy2, 2, 505U);
+			const float c2 = ValueNoiseTileableFloat(sx2, sy2, 4, 606U);
+			const float c3 = ValueNoiseTileableFloat(sx2, sy2, 8, 707U);
+			const float c4 = ValueNoiseTileableFloat(sx2, sy2, 16, 808U);
+
+			const float fbm2 = c1 * 0.46F + c2 * 0.32F + c3 * 0.15F + c4 * 0.07F;
+			const float norm2 = std::clamp((fbm2 - 0.40F) * 2.45F, 0.0F, 1.0F);
+			const float puff2 = norm2 * norm2 * (3.0F - 2.0F * norm2);
+			gFogCanopyNoiseLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(puff2 * 255.0F + 0.5F), 0, 255));
 		}
 	}
 
@@ -419,6 +432,12 @@ inline int SampleLutBilinear(const std::array<std::array<uint8_t, 256>, 256> &lu
 	return (top + (((bot - top) * fv) >> 8)) >> 8;
 }
 
+/**
+ * Updates the 1:1 screen-pixel world-locked fog sheets at 30 Hz.
+ * Because 1 texel in gCachedFloorFog[wy][wx] and gCachedCanopyFog[wy][wx] corresponds directly
+ * to 1 world-locked screen pixel, per-pixel rendering in DrawGroundFogTileBase requires
+ * ZERO SampleLutBilinear calls and ZERO isometric axis rotations!
+ */
 void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 {
 	if (gLastFogSheetDtype == leveltype && (ticks - gLastFogSheetUpdateTick) < 33U)
@@ -428,20 +447,19 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 	gLastFogSheetDtype = leveltype;
 
 	const int32_t sTicks = static_cast<int32_t>(ticks);
-	// Layer 1 (Low Ground Mist Bed): gentle creeping drift along primary thermal vector
-	const int driftX1 = (sTicks * 256) / cfg.driftDivX;
-	const int driftY1 = (sTicks * 256) / cfg.driftDivY;
+	// Layer 1 (Low Ground Mist Bed): gentle creeping drift
+	const int driftX1 = (sTicks * 256) / (cfg.driftDivX / 8);
+	const int driftY1 = (sTicks * 256) / (cfg.driftDivY / 4);
 
-	// Layer 2 (Elevated 3D Cloud Puffs): drifts at a ~65-degree cross-wind angle
-	const int driftX2 = ((driftX1 * 5) >> 3) + driftY1;
-	const int driftY2 = ((driftY1 * 5) >> 3) - driftX1;
+	// Layer 2 (Elevated 3D Cloud Puffs): distinct cross-wind drift direction & faster parallax speed
+	const int driftX2 = -((sTicks * 256) / (cfg.driftDivX / 11));
+	const int driftY2 = (sTicks * 256) / (cfg.driftDivY / 7);
 
-	// Decoupled lively internal counter-rotating swirl velocities!
-	// Even though overall fog travel is gentle, internal wisps continuously curl and swirl
-	const int warpDriftX1 = -(sTicks * 256) / 92;
-	const int warpDriftY1 = (sTicks * 256) / 110;
-	const int warpDriftX2 = (sTicks * 256) / 78;
-	const int warpDriftY2 = -(sTicks * 256) / 88;
+	// Lively counter-rotating internal swirl velocities so wisps curl organically inside both layers
+	const int warpDriftX1 = -(sTicks * 256) / 48;
+	const int warpDriftY1 = (sTicks * 256) / 62;
+	const int warpDriftX2 = (sTicks * 256) / 42;
+	const int warpDriftY2 = -(sTicks * 256) / 54;
 
 	if (cfg.hasPulse) {
 		const int phase = (sTicks / 65) & 0xFF;
@@ -468,30 +486,30 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 			const int wB = SampleLutBilinear(gFogWarpLut, uWarpFixed1, vWarpFixed1) - 128;
 			const int wC = SampleLutBilinear(gFogWarpLut, uWarpFixed2, vWarpFixed2) - 128;
 
-			const int warpX1 = wA * 28 + wC * 16;
-			const int warpY1 = wB * 28 - wC * 16;
+			const int warpX1 = wA * 32 + wC * 18;
+			const int warpY1 = wB * 24 - wC * 14;
 
-			// 1. Layer 1: Low Ground-Hugging Mist Bed
+			// 1. Layer 1: Low Ground-Hugging Mist Bed (samples gFogNoiseLut)
 			const int u1 = baseU + warpX1 + driftX1;
 			const int v1 = baseV + warpY1 + driftY1;
 			gCachedFloorFog[y][x] = static_cast<uint8_t>(SampleLutBilinear(gFogNoiseLut, u1, v1));
 
-			// 2. Layer 2: Elevated 3D Cloud Puffs (independent counter-curling swirl)
-			const int warpX2 = -wB * 30 + wC * 18;
-			const int warpY2 = wA * 30 + wC * 18;
+			// 2. Layer 2: Elevated 3D Cloud Puffs (samples distinct gFogCanopyNoiseLut)
+			const int warpX2 = -wB * 34 + wC * 20;
+			const int warpY2 = wA * 26 + wC * 16;
 			const int u2 = baseU + warpX2 + driftX2 + (137 << 8);
 			const int v2 = baseV + warpY2 + driftY2 + (89 << 8);
-			gCachedCanopyFog[y][x] = static_cast<uint8_t>(SampleLutBilinear(gFogNoiseLut, u2, v2));
+			gCachedCanopyFog[y][x] = static_cast<uint8_t>(SampleLutBilinear(gFogCanopyNoiseLut, u2, v2));
 		}
 	}
 
-	// Precompute 3D NW->SE dome slope on Layer 2 at 30 Hz so per-pixel rendering needs zero extra bilinear calls
+	// Precompute 3D NW->SE dome slope on Layer 2 at 30 Hz
 	for (int y = 0; y < 256; y++) {
 		const int yNW = (y - 3) & 0xFF;
 		const int ySE = (y + 3) & 0xFF;
 		for (int x = 0; x < 256; x++) {
-			const int xNW = (x - 3) & 0xFF;
-			const int xSE = (x + 3) & 0xFF;
+			const int xNW = (x - 5) & 0xFF;
+			const int xSE = (x + 5) & 0xFF;
 			const int slope = (static_cast<int>(gCachedCanopyFog[y][x]) - static_cast<int>(gCachedCanopyFog[yNW][xNW]))
 			    + ((static_cast<int>(gCachedCanopyFog[yNW][xNW]) - static_cast<int>(gCachedCanopyFog[ySE][xSE])) >> 1);
 			gCachedCanopySlope[y][x] = static_cast<int8_t>(std::clamp(slope, -127, 127));
@@ -556,8 +574,9 @@ void CarveHalfTileEntityWake(Point tile, Displacement subTileOffset, int carveSt
 
 	const int offX = std::clamp(subTileOffset.deltaX, -32, 32);
 	const int offY = std::clamp(subTileOffset.deltaY, -16, 16);
-	const int dHx16 = (offY * 2 - offX) / 2;
-	const int dHy16 = (offY * 2 + offX) / 2;
+	// Matches scrollrt.cpp isometric axes: tx++ moves (+32, +16), ty++ moves (-32, +16)
+	const int dHx16 = (offY * 2 + offX) / 2;
+	const int dHy16 = (offY * 2 - offX) / 2;
 
 	const int centerHx16 = (tile.x * 2 + 1) * 16 + dHx16;
 	const int centerHy16 = (tile.y * 2 + 1) * 16 + dHy16;
@@ -597,79 +616,6 @@ void CarveHalfTileEntityWake(Point tile, Displacement subTileOffset, int carveSt
 	}
 }
 
-inline void SampleTileFogState(
-    Point tile,
-    int u256,
-    int v256,
-    bool nW,
-    bool nE,
-    bool nN,
-    bool nS,
-    bool nNW,
-    bool nNE,
-    bool nSW,
-    bool nSE,
-    int &outDensity,
-    int &outWallFade,
-    int &outSwirlX,
-    int &outSwirlY)
-{
-	const int hxFixed = (tile.x * 2) * 256 + u256 * 2;
-	const int hyFixed = (tile.y * 2) * 256 + v256 * 2;
-	const int hx0 = std::clamp(hxFixed >> 8, 0, HalfGridW - 2);
-	const int hy0 = std::clamp(hyFixed >> 8, 0, HalfGridH - 2);
-	const int fx = hxFixed & 0xFF;
-	const int fy = hyFixed & 0xFF;
-
-	const FogHalfCell &c00 = gFogHalfGrid[hx0][hy0];
-	const FogHalfCell &c10 = gFogHalfGrid[hx0 + 1][hy0];
-	const FogHalfCell &c01 = gFogHalfGrid[hx0][hy0 + 1];
-	const FogHalfCell &c11 = gFogHalfGrid[hx0 + 1][hy0 + 1];
-
-	const int dTop = (static_cast<int>(c00.density) << 8) + (static_cast<int>(c10.density) - static_cast<int>(c00.density)) * fx;
-	const int dBot = (static_cast<int>(c01.density) << 8) + (static_cast<int>(c11.density) - static_cast<int>(c01.density)) * fx;
-	outDensity = (dTop + (((dBot - dTop) * fy) >> 8)) >> 8;
-
-	const int vxTop = (static_cast<int>(c00.velX) << 8) + (static_cast<int>(c10.velX) - static_cast<int>(c00.velX)) * fx;
-	const int vxBot = (static_cast<int>(c01.velX) << 8) + (static_cast<int>(c11.velX) - static_cast<int>(c01.velX)) * fx;
-	outSwirlX = (vxTop + (((vxBot - vxTop) * fy) >> 8)) >> 8;
-
-	const int vyTop = (static_cast<int>(c00.velY) << 8) + (static_cast<int>(c10.velY) - static_cast<int>(c00.velY)) * fx;
-	const int vyBot = (static_cast<int>(c01.velY) << 8) + (static_cast<int>(c11.velY) - static_cast<int>(c01.velY)) * fx;
-	outSwirlY = (vyTop + (((vyBot - vyTop) * fy) >> 8)) >> 8;
-
-	int minDist = 256;
-	if (!nW)
-		minDist = std::min(minDist, u256);
-	if (!nE)
-		minDist = std::min(minDist, 255 - u256);
-	if (!nN)
-		minDist = std::min(minDist, v256);
-	if (!nS)
-		minDist = std::min(minDist, 255 - v256);
-
-	if (!nNW)
-		minDist = std::min(minDist, std::max(u256, v256));
-	if (!nNE)
-		minDist = std::min(minDist, std::max(255 - u256, v256));
-	if (!nSW)
-		minDist = std::min(minDist, std::max(u256, 255 - v256));
-	if (!nSE)
-		minDist = std::min(minDist, std::max(255 - u256, 255 - v256));
-
-	constexpr int WallMargin = 12;
-	constexpr int WallFadeSpan = 124;
-
-	if (minDist <= WallMargin) {
-		outWallFade = 0;
-	} else if (minDist >= WallMargin + WallFadeSpan) {
-		outWallFade = 256;
-	} else {
-		const int t = ((minDist - WallMargin) * 256) / WallFadeSpan;
-		outWallFade = (t * t * (768 - 2 * t)) >> 16;
-	}
-}
-
 inline int LightIndexToVisibility256(int lIdx)
 {
 	if (lIdx >= LightsMax)
@@ -680,15 +626,65 @@ inline int LightIndexToVisibility256(int lIdx)
 	return Lut[std::clamp(lIdx - 10, 0, 4)];
 }
 
-inline int GetTileLightVisibility256(int tx, int ty)
+/**
+ * Evaluates fog weight (density * wallFade * lightVisibility), light shade index (0..14 * 256),
+ * and entity wake swirl at a SHARED tile-grid vertex (vx, vy) touched by tiles:
+ *   (vx - 1, vy - 1), (vx, vy - 1), (vx - 1, vy), (vx, vy).
+ * Because adjacent tiles call this exact same function at their shared vertices,
+ * all values are 100% C0-continuous across every tile edge — eliminating 64x32 diamond seams!
+ */
+inline void SampleSharedGridVertex(
+    int vx,
+    int vy,
+    int &outWeight256,
+    int &outLight256,
+    int &outSwirlX,
+    int &outSwirlY)
 {
-	if (tx < 0 || tx >= MAXDUNX || ty < 0 || ty >= MAXDUNY)
-		return 0;
-	return LightIndexToVisibility256(dLight[tx][ty]);
+	const int tX[2] = { std::clamp(vx - 1, 0, MAXDUNX - 1), std::clamp(vx, 0, MAXDUNX - 1) };
+	const int tY[2] = { std::clamp(vy - 1, 0, MAXDUNY - 1), std::clamp(vy, 0, MAXDUNY - 1) };
+
+	int densitySum = 0;
+	int visSum = 0;
+	int lightSum = 0;
+	int passCount = 0;
+	int swirlXSum = 0;
+	int swirlYSum = 0;
+
+	for (int iy = 0; iy < 2; iy++) {
+		const int ty = tY[iy];
+		const int hy = std::clamp(ty * 2 + 1, 0, HalfGridH - 1);
+		for (int ix = 0; ix < 2; ix++) {
+			const int tx = tX[ix];
+			const int hx = std::clamp(tx * 2 + 1, 0, HalfGridW - 1);
+			const FogHalfCell &cell = gFogHalfGrid[hx][hy];
+			densitySum += static_cast<int>(cell.density);
+			swirlXSum += static_cast<int>(cell.velX);
+			swirlYSum += static_cast<int>(cell.velY);
+
+			const int lIdx = dLight[tx][ty];
+			visSum += LightIndexToVisibility256(lIdx);
+			if (gFogTilePassable[tx][ty]) {
+				lightSum += std::clamp(lIdx, 0, 14) * 256;
+				passCount++;
+			}
+		}
+	}
+
+	const int avgDensity = densitySum >> 2;
+	const int avgVis = visSum >> 2;
+	// Smooth wall-margin feathering when 1 or more of the 4 vertex-sharing tiles is a solid wall
+	static constexpr int PassableFadeLut[5] = { 0, 56, 144, 216, 256 };
+	const int wallFade = PassableFadeLut[passCount];
+
+	outWeight256 = (((avgDensity * wallFade) >> 8) * avgVis) >> 8;
+	outLight256 = (passCount > 0) ? (lightSum / passCount) : (14 * 256);
+	outSwirlX = swirlXSum >> 2;
+	outSwirlY = swirlYSum >> 2;
 }
 
 // ============================================================================
-// Caves Boiling Lava Bubbles (Rendered Below Ground Fog + 6-Tile Proximity Audio)
+// Caves Boiling Lava Bubbles (Rendered Below Ground Fog + 15-Tile Smooth Audio)
 // ============================================================================
 
 struct LavaBubble {
@@ -706,7 +702,7 @@ struct LavaBubble {
 	uint8_t seed;
 };
 
-constexpr size_t MaxLavaBubbles = 64;
+constexpr size_t MaxLavaBubbles = 36;
 std::array<LavaBubble, MaxLavaBubbles> gLavaBubbles;
 std::array<std::array<uint8_t, MAXDUNY>, MAXDUNX> gBubbleCountOnTile;
 uint32_t gLavaBubbleRngState = 0xA341316CU;
@@ -768,8 +764,8 @@ void EnsureLiveLavaBubbleShades()
 }
 
 /**
- * Plays LS_LAVABUBBLES ONLY when the player is relatively close (<= 6 tiles) to
- * visible, illuminated lava tiles within the player's light radius.
+ * Plays LS_LAVABUBBLES with a 2.5x extended hearing distance (MaxHearRadius = 15 tiles)
+ * and a smooth quadratic distance attenuation curve (no abrupt light-radius cutoff).
  */
 void SyncLavaBubbleAudio()
 {
@@ -780,7 +776,7 @@ void SyncLavaBubbleAudio()
 	}
 
 	const Point center = MyPlayer != nullptr ? Point(MyPlayer->position.tile) : ViewPosition;
-	constexpr int MaxHearRadius = 6;
+	constexpr int MaxHearRadius = 15; // 2.5x previous 6-tile radius
 	int minDistSq = (MaxHearRadius + 1) * (MaxHearRadius + 1);
 
 	const int minX = std::max(0, center.x - MaxHearRadius);
@@ -795,9 +791,6 @@ void SyncLavaBubbleAudio()
 			const int dSq = dx * dx + dy * dy;
 			if (dSq >= minDistSq)
 				continue;
-			// Require the lava tile to be visible inside the player's active light radius
-			if (dLight[x][y] >= LightsMax)
-				continue;
 			if (IsCavesLavaTile({ x, y })) {
 				minDistSq = dSq;
 			}
@@ -809,9 +802,11 @@ void SyncLavaBubbleAudio()
 		return;
 	}
 
-	const int dist256 = static_cast<int>(std::sqrt(static_cast<float>(minDistSq)) * 256.0F) / MaxHearRadius;
-	const int clamped256 = std::clamp(dist256, 0, 256);
-	const int lavaVolume = -150 - ((clamped256 * 1750) >> 8);
+	const float dist = std::sqrt(static_cast<float>(minDistSq));
+	const float normDist = std::clamp(dist / static_cast<float>(MaxHearRadius), 0.0F, 1.0F);
+	// Smoothly fade from -150 mB at 0 tiles down to -2350 mB at 15 tiles (no abrupt step)
+	const float smoothCurve = normDist * (0.45F + 0.55F * normDist);
+	const int lavaVolume = -150 - static_cast<int>(smoothCurve * 2200.0F);
 	PlayLoopingSFX(LS_LAVABUBBLES, lavaVolume);
 }
 
@@ -824,7 +819,7 @@ void TrySpawnCavesLavaBubble(Point center, bool randomInitialAge)
 	if (!IsCavesLavaTile(candidate))
 		return;
 
-	if (gBubbleCountOnTile[tx][ty] >= 2)
+	if (gBubbleCountOnTile[tx][ty] >= 1)
 		return;
 
 	LavaBubble *freeSlot = nullptr;
@@ -840,15 +835,17 @@ void TrySpawnCavesLavaBubble(Point center, bool randomInitialAge)
 	const uint32_t r2 = NextBubbleRand();
 	freeSlot->active = true;
 	freeSlot->tile = candidate;
-	freeSlot->offsetX = static_cast<int8_t>(-10 + static_cast<int>(r2 % 21U));
-	freeSlot->offsetY = static_cast<int8_t>(-4 + static_cast<int>((r2 >> 5) % 9U));
+	// Keep bubble center well inside the current tile's 64x32 diamond so neighbor tiles never clip it
+	freeSlot->offsetX = static_cast<int8_t>(-8 + static_cast<int>(r2 % 17U));
+	freeSlot->offsetY = static_cast<int8_t>(-3 + static_cast<int>((r2 >> 5) % 7U));
 	freeSlot->snappedToLava = false;
-	freeSlot->swellTicks = static_cast<uint8_t>(34 + ((r2 >> 9) % 23U));
-	freeSlot->burstTicks = static_cast<uint8_t>(8 + ((r2 >> 15) % 5U));
-	freeSlot->rippleTicks = static_cast<uint8_t>(8 + ((r2 >> 18) % 6U));
+	// Slow, viscous magma bubble growth (~3.0 - 4.5 seconds at 20 Hz simulation tick)
+	freeSlot->swellTicks = static_cast<uint8_t>(60 + ((r2 >> 9) % 32U));
+	freeSlot->burstTicks = static_cast<uint8_t>(14 + ((r2 >> 15) % 6U));
+	freeSlot->rippleTicks = static_cast<uint8_t>(16 + ((r2 >> 18) % 8U));
 	freeSlot->age = randomInitialAge ? static_cast<uint8_t>(r2 % freeSlot->swellTicks) : 0;
-	freeSlot->maxRadX = static_cast<uint8_t>(6 + ((r2 >> 21) % 3U));
-	freeSlot->maxRadY = static_cast<uint8_t>(std::max<int>(4, (freeSlot->maxRadX * 2 + 1) / 3));
+	freeSlot->maxRadX = static_cast<uint8_t>(5 + ((r2 >> 21) % 3U));
+	freeSlot->maxRadY = static_cast<uint8_t>(std::max<int>(3, (freeSlot->maxRadX * 2 + 1) / 3));
 	freeSlot->seed = static_cast<uint8_t>((r2 >> 24) & 0xFFU);
 	gBubbleCountOnTile[tx][ty]++;
 }
@@ -869,7 +866,7 @@ void ResetCavesLavaBubbles()
 
 	if (leveltype == DTYPE_CAVES) {
 		const Point center = MyPlayer != nullptr ? Point(MyPlayer->position.tile) : ViewPosition;
-		for (int i = 0; i < 120; i++) {
+		for (int i = 0; i < 64; i++) {
 			TrySpawnCavesLavaBubble(center, true);
 		}
 	}
@@ -904,21 +901,17 @@ void UpdateCavesLavaBubblesSimulation()
 		}
 	}
 
-	for (int attempt = 0; attempt < 12; attempt++) {
+	for (int attempt = 0; attempt < 3; attempt++) {
 		TrySpawnCavesLavaBubble(center, false);
 	}
 
 	SyncLavaBubbleAudio();
 }
 
-/**
- * Fast O(1) 8-point shoreline margin check directly against the Surface buffer
- * (replaces the 129,000-iteration per-tile safeLavaPx erosion scan that dropped Caves to 30 FPS!).
- */
 inline bool IsSafeLavaFootprint(const Surface &out, int cx, int cy, int radX, int radY)
 {
-	const int rx = radX + 4;
-	const int ry = radY + 3;
+	const int rx = radX + 2;
+	const int ry = radY + 2;
 	if (cx - rx < 0 || cx + rx >= out.w() || cy - ry < 0 || cy + ry >= out.h())
 		return false;
 
@@ -927,14 +920,8 @@ inline bool IsSafeLavaFootprint(const Surface &out, int cx, int cy, int radX, in
 		return c >= 1 && c <= 31;
 	};
 
-	if (!isLavaPx(cx, cy) || !isLavaPx(cx - rx, cy) || !isLavaPx(cx + rx, cy)
-	    || !isLavaPx(cx, cy - ry) || !isLavaPx(cx, cy + ry))
-		return false;
-
-	const int dxDiag = (rx * 3) >> 2;
-	const int dyDiag = (ry * 3) >> 2;
-	return isLavaPx(cx - dxDiag, cy - dyDiag) && isLavaPx(cx + dxDiag, cy - dyDiag)
-	    && isLavaPx(cx - dxDiag, cy + dyDiag) && isLavaPx(cx + dxDiag, cy + dyDiag);
+	return isLavaPx(cx, cy) && isLavaPx(cx - rx, cy) && isLavaPx(cx + rx, cy)
+	    && isLavaPx(cx, cy - ry) && isLavaPx(cx, cy + ry);
 }
 
 void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point targetBufferPosition, int lightIndex)
@@ -946,11 +933,14 @@ void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point ta
 
 	EnsureLiveLavaBubbleShades();
 
-	const uint8_t *lightTbl = LightTables[std::clamp(lightIndex, 0, LightsMax - 1)].data();
-	const uint8_t crustCol = lightTbl != nullptr ? lightTbl[gLavaCrustIdx] : gLavaCrustIdx;
-	const uint8_t bodyCol = lightTbl != nullptr ? lightTbl[gLavaBodyIdx] : gLavaBodyIdx;
-	const uint8_t rimCol = lightTbl != nullptr ? lightTbl[gLavaRimIdx] : gLavaRimIdx;
-	const uint8_t specCol = lightTbl != nullptr ? lightTbl[gLavaSpecIdx] : gLavaSpecIdx;
+	// Use the live luminance-sorted lava palette indices (1..31) directly!
+	// Passing them through LightTables[lightIndex] caused rapid 20 Hz flickering because
+	// lighting_color_cycling() rotates LightTables[1..31] independently of system_palette[1..31]
+	// and maps darker lava indices to 0 (Black).
+	const uint8_t crustCol = gLavaCrustIdx;
+	const uint8_t bodyCol = gLavaBodyIdx;
+	const uint8_t rimCol = gLavaRimIdx;
+	const uint8_t specCol = gLavaSpecIdx;
 
 	const int tileCenterX = targetBufferPosition.x + 32;
 	const int tileCenterY = targetBufferPosition.y - 16;
@@ -974,9 +964,9 @@ void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point ta
 		if (!b.snappedToLava) {
 			bool foundSafeSpot = IsSafeLavaFootprint(out, tileCenterX + b.offsetX, tileCenterY + b.offsetY, maxRx, maxRy);
 			if (!foundSafeSpot) {
-				for (int tryIdx = 0; tryIdx < 16; tryIdx++) {
-					const int candOffX = -14 + ((b.seed * 7 + tryIdx * 11) % 29);
-					const int candOffY = -6 + ((b.seed * 5 + tryIdx * 7) % 13);
+				for (int tryIdx = 0; tryIdx < 12; tryIdx++) {
+					const int candOffX = -8 + ((b.seed * 7 + tryIdx * 5) % 17);
+					const int candOffY = -3 + ((b.seed * 3 + tryIdx * 3) % 7);
 					if (IsSafeLavaFootprint(out, tileCenterX + candOffX, tileCenterY + candOffY, maxRx, maxRy)) {
 						b.offsetX = static_cast<int8_t>(candOffX);
 						b.offsetY = static_cast<int8_t>(candOffY);
@@ -994,18 +984,17 @@ void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point ta
 			b.snappedToLava = true;
 		}
 
+		// Once snapped to open lava on this tile, never skip frames (which caused blinking when
+		// neighboring tiles drew ground fog over shared borders); plotLavaOnly guards dst in 1..31 per pixel.
 		const int cx = tileCenterX + static_cast<int>(b.offsetX);
 		const int cy = tileCenterY + static_cast<int>(b.offsetY);
-
-		if (!IsSafeLavaFootprint(out, cx, cy, maxRx, maxRy))
-			continue;
 
 		if (b.age < b.swellTicks) {
 			const int progress256 = (static_cast<int>(b.age) * 256) / std::max<int>(1, b.swellTicks);
 			const int ease256 = 256 - (((256 - progress256) * (256 - progress256)) >> 8);
 			const int rx = std::max(2, (maxRx * ease256 + 128) >> 8);
 			const int ry = std::max(2, (maxRy * ease256 + 128) >> 8);
-			const int domeLift = (5 * ease256) >> 8;
+			const int domeLift = (4 * ease256) >> 8;
 
 			const int rxSq = std::max(1, rx * rx);
 			const int rySq = std::max(1, ry * ry);
@@ -1048,11 +1037,11 @@ void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point ta
 			for (int dy = -ry - 1; dy <= ry + 1; dy++) {
 				for (int dx = -rx - 1; dx <= rx + 1; dx++) {
 					const int norm256 = (dx * dx * 256) / rxSq + (dy * dy * 256) / rySq;
-					if (norm256 < 110 || norm256 > 268)
+					if (norm256 < 115 || norm256 > 264)
 						continue;
 
 					const int angleHash = ((dx * 7 + dy * 13 + static_cast<int>(b.seed)) & 7);
-					if (burst256 > 128 && angleHash < 2)
+					if (burst256 > 140 && angleHash < 2)
 						continue;
 
 					const uint8_t col = (norm256 >= 170 && norm256 <= 225)
@@ -1072,10 +1061,8 @@ void DrawCavesLavaBubblesOnTile(const Surface &out, Point tilePosition, Point ta
 			for (int dy = -ry; dy <= ry; dy++) {
 				for (int dx = -rx; dx <= rx; dx++) {
 					const int norm256 = (dx * dx * 256) / rxSq + (dy * dy * 256) / rySq;
-					if (norm256 >= 190 && norm256 <= 256) {
-						if (((dx + dy + rippleAge) & 1) == 0) {
-							plotLavaOnly(cx + dx, cy + dy, (ripple256 < 128) ? bodyCol : crustCol);
-						}
+					if (norm256 >= 185 && norm256 <= 256) {
+						plotLavaOnly(cx + dx, cy + dy, (ripple256 < 128) ? bodyCol : crustCol);
 					}
 				}
 			}
@@ -1245,78 +1232,45 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 	const uint32_t ticks = SDL_GetTicks();
 	UpdateCachedFogSheets30Hz(ticks, cfg);
 
-	const bool nW = IsFogPassableTile({ tx - 1, ty });
-	const bool nE = IsFogPassableTile({ tx + 1, ty });
-	const bool nN = IsFogPassableTile({ tx, ty - 1 });
-	const bool nS = IsFogPassableTile({ tx, ty + 1 });
-	const bool nNW = IsFogPassableTile({ tx - 1, ty - 1 });
-	const bool nNE = IsFogPassableTile({ tx + 1, ty - 1 });
-	const bool nSW = IsFogPassableTile({ tx - 1, ty + 1 });
-	const bool nSE = IsFogPassableTile({ tx + 1, ty + 1 });
+	// Evaluate fog weight, light index, and swirl at the 4 SHARED tile-grid vertices:
+	//   (tx, ty) = Top, (tx + 1, ty) = Right, (tx, ty + 1) = Left, (tx + 1, ty + 1) = Bottom.
+	int w00 = 0, l00 = 0, sx00 = 0, sy00 = 0;
+	int w10 = 0, l10 = 0, sx10 = 0, sy10 = 0;
+	int w01 = 0, l01 = 0, sx01 = 0, sy01 = 0;
+	int w11 = 0, l11 = 0, sx11 = 0, sy11 = 0;
 
-	// Evaluate tile fog state at the 4 corners of the tile (4 calls per tile instead of 1,024!)
-	int d00 = cfg.maxDensity, wf00 = 256, sx00 = 0, sy00 = 0;
-	int d10 = cfg.maxDensity, wf10 = 256, sx10 = 0, sy10 = 0;
-	int d01 = cfg.maxDensity, wf01 = 256, sx01 = 0, sy01 = 0;
-	int d11 = cfg.maxDensity, wf11 = 256, sx11 = 0, sy11 = 0;
+	SampleSharedGridVertex(tx,     ty,     w00, l00, sx00, sy00);
+	SampleSharedGridVertex(tx + 1, ty,     w10, l10, sx10, sy10);
+	SampleSharedGridVertex(tx,     ty + 1, w01, l01, sx01, sy01);
+	SampleSharedGridVertex(tx + 1, ty + 1, w11, l11, sx11, sy11);
 
-	SampleTileFogState(tilePosition, 16, 16, nW, nE, nN, nS, nNW, nNE, nSW, nSE, d00, wf00, sx00, sy00);
-	SampleTileFogState(tilePosition, 240, 16, nW, nE, nN, nS, nNW, nNE, nSW, nSE, d10, wf10, sx10, sy10);
-	SampleTileFogState(tilePosition, 16, 240, nW, nE, nN, nS, nNW, nNE, nSW, nSE, d01, wf01, sx01, sy01);
-	SampleTileFogState(tilePosition, 240, 240, nW, nE, nN, nS, nNW, nNE, nSW, nSE, d11, wf11, sx11, sy11);
-
-	if ((d00 | d10 | d01 | d11) < 6 || (wf00 | wf10 | wf01 | wf11) == 0)
+	if ((w00 | w10 | w01 | w11) <= 4)
 		return;
 
-	const bool doLight = (lightIndex > 0);
-	const int lIdx = std::clamp(lightIndex, 0, LightsMax - 1);
-
-	// Use ShadeFogColor so PAL16_GRAY never snaps to 0 (Pure Black) at lightIndex >= 6 in Hell!
-	const uint8_t litCrest = ShadeFogColor(cfg.crestShade, lIdx);
-	const uint8_t litCore = ShadeFogColor(cfg.coreShade, lIdx);
-	const uint8_t litTrough = ShadeFogColor(cfg.troughShade, lIdx);
-	// Darkest charcoal shade (PAL16_GRAY + 14) for Pass 2 drop-shadows so floor never snaps to 0!
+	// Precompute shaded fog colors for all 15 light steps (0..14) so per-pixel vertex-interpolated
+	// lighting transitions smoothly across light rings without flat 64x32 diamond tile steps!
+	uint8_t crestByLight[15];
+	uint8_t coreByLight[15];
+	uint8_t troughByLight[15];
+	for (int l = 0; l < 15; l++) {
+		crestByLight[l] = ShadeFogColor(cfg.crestShade, l);
+		coreByLight[l] = ShadeFogColor(cfg.coreShade, l);
+		troughByLight[l] = ShadeFogColor(cfg.troughShade, l);
+	}
 	const uint8_t shadowShade = static_cast<uint8_t>(PAL16_GRAY + 14);
 
-	int cLight00 = 256;
-	int cLight10 = 256;
-	int cLight01 = 256;
-	int cLight11 = 256;
-	if (doLight && lIdx >= 8) {
-		const int vC = LightIndexToVisibility256(lIdx);
-		const int vW = GetTileLightVisibility256(tx - 1, ty);
-		const int vE = GetTileLightVisibility256(tx + 1, ty);
-		const int vN = GetTileLightVisibility256(tx, ty - 1);
-		const int vS = GetTileLightVisibility256(tx, ty + 1);
-		const int vNW = GetTileLightVisibility256(tx - 1, ty - 1);
-		const int vNE = GetTileLightVisibility256(tx + 1, ty - 1);
-		const int vSW = GetTileLightVisibility256(tx - 1, ty + 1);
-		const int vSE = GetTileLightVisibility256(tx + 1, ty + 1);
+	// Average swirl offset across the tile
+	const int swirlPxX = ((sx00 + sx10 + sx01 + sx11) >> 4);
+	const int swirlPxY = ((sy00 + sy10 + sy01 + sy11) >> 5);
 
-		cLight00 = (vC + vW + vN + vNW) >> 2;
-		cLight10 = (vC + vE + vN + vNE) >> 2;
-		cLight01 = (vC + vW + vS + vSW) >> 2;
-		cLight11 = (vC + vE + vS + vSE) >> 2;
-	}
+	// Exact world-locked screen pixel origin for tile (tx, ty) matching scrollrt.cpp:
+	//   tx++ -> (+32, +16), ty++ -> (-32, +16)
+	const int worldPxX = (tx - ty) * 32;
+	const int worldPxY = (tx + ty) * 16;
 
-	// Fold light visibility into wf00..wf11 once per tile!
-	wf00 = (wf00 * cLight00) >> 8;
-	wf10 = (wf10 * cLight10) >> 8;
-	wf01 = (wf01 * cLight01) >> 8;
-	wf11 = (wf11 * cLight11) >> 8;
-
-	// Layer 1 (Low Ground Mist) & Layer 2 (Elevated 3D Cloud Puffs)
-	const int uvScale1 = static_cast<int>(cfg.uvScale);
-	const int uvScale2 = std::max(28, (uvScale1 * 2) / 3);
-	const int baseWorldU1 = tx * uvScale1;
-	const int baseWorldV1 = ty * uvScale1;
-	const int baseWorldU2 = tx * uvScale2 + 37;
-	const int baseWorldV2 = ty * uvScale2 + 73;
-
+	// Layer 1 (Low Ground Mist Carpet) & Layer 2 (Elevated 3D Cloud Puffs + Drop-Shadow)
 	const int floorCutoff = static_cast<int>(cfg.intensityCutoff) + gCachedPulseOffset;
-	// Lower canopyCutoff (+22) so Layer 2 3D cloud puffs and their drop-shadows
-	// are richly visible in Cathedral and Hell just like in Caves and Catacombs!
-	const int canopyCutoff = static_cast<int>(cfg.intensityCutoff) + 22 + gCachedPulseOffset;
+	const int canopyCutoff = 104 + gCachedPulseOffset;
 	const int floorScaleRecip = (256 * 256) / std::max(64, 255 - floorCutoff);
 	const int canopyScaleRecip = (256 * 256) / std::max(64, 255 - canopyCutoff);
 
@@ -1324,6 +1278,12 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 	const int leftX = targetBufferPosition.x;
 	const int clipW = out.w();
 	const int clipH = out.h();
+
+	auto evalBilinear256 = [](int c00, int c10, int c01, int c11, int u256, int v256) -> int {
+		const int top = (c00 << 8) + (c10 - c00) * u256;
+		const int bot = (c01 << 8) + (c11 - c01) * u256;
+		return (top + (((bot - top) * v256) >> 8)) >> 8;
+	};
 
 	// Exact 31-scanline non-overlapping isometric diamond partition (dy = 1..31)
 	for (int dy = 1; dy < 32; dy++) {
@@ -1334,96 +1294,101 @@ void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetB
 		const int halfSpan = (dy <= 16) ? (dy * 2) : ((32 - dy) * 2);
 		const int xStart = 32 - halfSpan;
 		const int xEnd = 32 + halfSpan;
+		const int spanLen = std::max(1, xEnd - xStart);
 		const int relY = dy - 16;
-		const int8_t *bayerRow = Bayer4x4[screenY & 3];
 
-		for (int dx = xStart; dx < xEnd; dx++) {
+		// Evaluate u256/v256 ONLY at the left and right endpoints of this scanline!
+		// Matches scrollrt.cpp axes: u256 = (relY * 2 + relX) * 4 + 128, v256 = (relY * 2 - relX) * 4 + 128
+		const int relXLeft = xStart - 32;
+		const int uLeft = std::clamp((relY * 2 + relXLeft) * 4 + 128, 0, 256);
+		const int vLeft = std::clamp((relY * 2 - relXLeft) * 4 + 128, 0, 256);
+
+		const int relXRight = xEnd - 32;
+		const int uRight = std::clamp((relY * 2 + relXRight) * 4 + 128, 0, 256);
+		const int vRight = std::clamp((relY * 2 - relXRight) * 4 + 128, 0, 256);
+
+		const int wLeft = evalBilinear256(w00, w10, w01, w11, uLeft, vLeft);
+		const int wRight = evalBilinear256(w00, w10, w01, w11, uRight, vRight);
+		if ((wLeft | wRight) <= 4)
+			continue;
+
+		const int lLeft = evalBilinear256(l00, l10, l01, l11, uLeft, vLeft);
+		const int lRight = evalBilinear256(l00, l10, l01, l11, uRight, vRight);
+
+		int wFixed = wLeft << 8;
+		const int wStep = ((wRight - wLeft) << 8) / spanLen;
+		int lFixed = lLeft << 8;
+		const int lStep = ((lRight - lLeft) << 8) / spanLen;
+
+		const int8_t *bayerRow = Bayer4x4[screenY & 3];
+		const int wy1 = (worldPxY + dy + swirlPxY) & 0xFF;
+		const int wy2 = (worldPxY + dy + (swirlPxY >> 1)) & 0xFF;
+		const int wyShadow = (wy2 - 6) & 0xFF;
+		const uint8_t *floorRow = gCachedFloorFog[wy1].data();
+		const uint8_t *canopyRow = gCachedCanopyFog[wy2].data();
+		const uint8_t *shadowRow = gCachedCanopyFog[wyShadow].data();
+		const int8_t *slopeRow = gCachedCanopySlope[wy2].data();
+
+		for (int dx = xStart; dx < xEnd; dx++, wFixed += wStep, lFixed += lStep) {
 			const int screenX = leftX + dx;
 			if (screenX < 0 || screenX >= clipW)
 				continue;
 
-			const int relX = dx - 32;
-			const int u256 = std::clamp((relY * 2 - relX) * 4 + 128, 0, 255);
-			const int v256 = std::clamp((relY * 2 + relX) * 4 + 128, 0, 255);
-
-			// Fast 4-corner bilinear interpolation of tile density, wall*light fade, and swirl
-			const int dTop = (d00 << 8) + (d10 - d00) * u256;
-			const int dBot = (d01 << 8) + (d11 - d01) * u256;
-			const int localDensity = (dTop + (((dBot - dTop) * v256) >> 8)) >> 8;
-			if (localDensity < 6)
+			const int weight = wFixed >> 8;
+			if (weight <= 4)
 				continue;
 
-			const int wfTop = (wf00 << 8) + (wf10 - wf00) * u256;
-			const int wfBot = (wf01 << 8) + (wf11 - wf01) * u256;
-			const int combinedFade = (wfTop + (((wfBot - wfTop) * v256) >> 8)) >> 8;
-			if (combinedFade <= 4)
-				continue;
+			const int dither = bayerRow[screenX & 3];
+			// Smoothly dithered vertex-interpolated light index (eliminates per-tile light diamond steps!)
+			const int smoothLightIdx = std::clamp(((lFixed >> 8) + dither * 8) >> 8, 0, 14);
+			const uint8_t litCrest = crestByLight[smoothLightIdx];
+			const uint8_t litCore = coreByLight[smoothLightIdx];
+			const uint8_t litTrough = troughByLight[smoothLightIdx];
 
-			const int sxTop = (sx00 << 8) + (sx10 - sx00) * u256;
-			const int sxBot = (sx01 << 8) + (sx11 - sx01) * u256;
-			const int swirlX = (sxTop + (((sxBot - sxTop) * v256) >> 8)) >> 8;
+			const int wx1 = (worldPxX + dx + swirlPxX) & 0xFF;
+			const int wx2 = (worldPxX + dx + (swirlPxX >> 1)) & 0xFF;
+			const int wxShadow = (wx2 - 10) & 0xFF;
 
-			const int syTop = (sy00 << 8) + (sy10 - sy00) * u256;
-			const int syBot = (sy01 << 8) + (sy11 - sy01) * u256;
-			const int swirlY = (syTop + (((syBot - syTop) * v256) >> 8)) >> 8;
-
-			// ================================================================
-			// 1. Layer 1: Low Ground-Hugging Mist Bed
-			// ================================================================
-			const int u1Fixed = (baseWorldU1 << 8) + u256 * uvScale1 + (swirlX << 5);
-			const int v1Fixed = (baseWorldV1 << 8) + v256 * uvScale1 + (swirlY << 5);
-			const int rawDensity1 = SampleLutBilinear(gCachedFloorFog, u1Fixed, v1Fixed);
-
-			// ================================================================
-			// 2. Layer 2: Elevated 3D Cloud Puffs + Offset Cast Drop-Shadow
-			// ================================================================
-			const int u2Fixed = (baseWorldU2 << 8) + u256 * uvScale2 + (swirlX << 4);
-			const int v2Fixed = (baseWorldV2 << 8) + v256 * uvScale2 + (swirlY << 4);
-			const int rawDensity2 = SampleLutBilinear(gCachedCanopyFog, u2Fixed, v2Fixed);
-
-			// Direct O(1) lookup for shadow & 3D slope (saving 2 bilinear calls per pixel!)
-			const int u2Idx = (u2Fixed >> 8) & 0xFF;
-			const int v2Idx = (v2Fixed >> 8) & 0xFF;
-			const int rawShadow2 = gCachedCanopyFog[(v2Idx + 6) & 0xFF][(u2Idx + 6) & 0xFF];
+			const int rawDensity1 = floorRow[wx1];
+			const int rawDensity2 = canopyRow[wx2];
+			const int rawShadow2 = shadowRow[wxShadow];
 
 			uint8_t &dst = out[{ screenX, screenY }];
 			uint8_t outPx = dst;
-			const int dither = bayerRow[screenX & 3];
 
-			// Pass 1: Composite Layer 1 (Low Ground Mist Bed)
+			// Pass 1: Layer 1 (Low Ground-Hugging Mist Bed — ~75% floor coverage, medium slate-gray)
 			if (rawDensity1 > floorCutoff) {
 				const int norm1 = ((rawDensity1 - floorCutoff) * floorScaleRecip) >> 8;
 				const int smooth1 = (norm1 * (384 - norm1)) >> 8;
-				const int alpha1 = (((smooth1 * localDensity) >> 8) * combinedFade >> 8) + dither;
-				if (alpha1 > 14) {
-					const uint8_t shade1 = (norm1 > 165) ? litCore : gFogAlphaLut[3][litTrough][litCore];
+				const int alpha1 = (((smooth1 * weight) >> 8) * 165 >> 8) + dither;
+				if (alpha1 > 12) {
+					const uint8_t shade1 = (norm1 > 145) ? litCore : litTrough;
 					outPx = ApplySoftFogBlend(shade1, outPx, alpha1, false);
 				}
 			}
 
-			// Pass 2: Composite Layer 2 Cast Drop-Shadow (darkens both bare floor and Layer 1 mist!)
-			const int canopyDensity = (localDensity + static_cast<int>(cfg.maxDensity)) >> 1;
-			if (rawShadow2 > canopyCutoff && rawShadow2 > rawDensity2 - 12) {
+			// Pass 2: Layer 2 Cast Drop-Shadow (offset +10px X, +6px Y; darkens bare floor AND Layer 1 mist!)
+			if (rawShadow2 > canopyCutoff && rawShadow2 > rawDensity2 - 20) {
 				const int normS = ((rawShadow2 - canopyCutoff) * canopyScaleRecip) >> 8;
-				const int shadowAlpha = (((normS * canopyDensity) >> 8) * combinedFade >> 8) + dither;
-				if (shadowAlpha > 96) {
-					outPx = gFogAlphaLut[2][outPx][shadowShade]; // 18.75% charcoal shadow
-				} else if (shadowAlpha > 48) {
-					outPx = gFogAlphaLut[1][outPx][shadowShade]; // 12.5% charcoal shadow
+				const int shadowAlpha = ((normS * weight) >> 8) + dither;
+				if (shadowAlpha > 110) {
+					outPx = gFogAlphaLut[2][outPx][shadowShade]; // 37.5% charcoal drop-shadow
+				} else if (shadowAlpha > 56) {
+					outPx = gFogAlphaLut[1][outPx][shadowShade]; // 25.0% charcoal drop-shadow
 				} else if (shadowAlpha > 18) {
-					outPx = gFogAlphaLut[0][outPx][shadowShade]; // 6.25% charcoal shadow
+					outPx = gFogAlphaLut[0][outPx][shadowShade]; // 12.5% charcoal drop-shadow
 				}
 			}
 
-			// Pass 3: Composite Layer 2 (Elevated 3D Cloud Puffs with Top-Left Dome Highlights)
+			// Pass 3: Layer 2 (Elevated 3D Cloud Puffs — sculpted silver-white crests & billowing body)
 			if (rawDensity2 > canopyCutoff) {
 				const int norm2 = ((rawDensity2 - canopyCutoff) * canopyScaleRecip) >> 8;
 				const int smooth2 = (norm2 * (384 - norm2)) >> 8;
-				const int alpha2 = ((((smooth2 * canopyDensity) >> 8) * combinedFade) >> 8) + 28 + dither;
-				if (alpha2 > 14) {
-					const int slope = gCachedCanopySlope[v2Idx][u2Idx];
+				const int alpha2 = (((smooth2 * weight) >> 8) * 235 >> 8) + 22 + dither;
+				if (alpha2 > 12) {
+					const int slope = slopeRow[wx2];
 					uint8_t shade2;
-					if (slope > 6 || norm2 > 140) {
+					if (slope > 5 || norm2 > 135) {
 						shade2 = litCrest;
 					} else if (slope >= -8) {
 						shade2 = litCore;
@@ -1474,13 +1439,11 @@ void DrawGroundFogEntitySubmersion(const Surface &out, Point tilePosition, Point
 	UpdateCachedFogSheets30Hz(ticks, cfg);
 
 	const int lIdx = std::clamp(lightIndex, 0, LightsMax - 1);
-
 	const uint8_t litCrest = ShadeFogColor(cfg.crestShade, lIdx);
 	const uint8_t litCore = ShadeFogColor(cfg.coreShade, lIdx);
 
-	const int uvScale2 = std::max(28, (static_cast<int>(cfg.uvScale) * 2) / 3);
-	const int baseWorldU = tx * uvScale2 + 37;
-	const int baseWorldV = ty * uvScale2 + 73;
+	const int worldPxX = (tx - ty) * 32;
+	const int worldPxY = (tx + ty) * 16;
 
 	const int footCenterX = targetBufferPosition.x + 32;
 	const int footCenterY = targetBufferPosition.y - 12;
@@ -1495,6 +1458,7 @@ void DrawGroundFogEntitySubmersion(const Surface &out, Point tilePosition, Point
 		if (screenY < 0 || screenY >= clipH)
 			continue;
 
+		const int wy = (worldPxY + (dy + 19)) & 0xFF;
 		const int dyNorm256 = (dy * dy * 256) / (Ry * Ry);
 		for (int dx = -Rx; dx <= Rx; dx++) {
 			const int screenX = footCenterX + dx;
@@ -1505,17 +1469,13 @@ void DrawGroundFogEntitySubmersion(const Surface &out, Point tilePosition, Point
 			if (d2 >= 256)
 				continue;
 
-			const int u256 = std::clamp(((dy + 4) * 2 - dx) * 4 + 128, 0, 255);
-			const int v256 = std::clamp(((dy + 4) * 2 + dx) * 4 + 128, 0, 255);
-
-			const int uFixed = (baseWorldU << 8) + u256 * uvScale2;
-			const int vFixed = (baseWorldV << 8) + v256 * uvScale2;
-			const int rawDensity = SampleLutBilinear(gCachedCanopyFog, uFixed, vFixed);
-			if (rawDensity <= cfg.intensityCutoff + 20)
+			const int wx = (worldPxX + (dx + 32)) & 0xFF;
+			const int rawDensity = gCachedCanopyFog[wy][wx];
+			if (rawDensity <= 110)
 				continue;
 
 			uint8_t &dst = out[{ screenX, screenY }];
-			if (d2 < 96 && rawDensity > 175) {
+			if (d2 < 96 && rawDensity > 170) {
 				dst = gFogAlphaLut[2][dst][litCrest];
 			} else if (d2 < 180) {
 				dst = gFogAlphaLut[1][dst][litCore];

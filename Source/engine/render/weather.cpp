@@ -252,6 +252,49 @@ inline void PlotBlended12(const Surface &out, int x, int y, uint8_t fg)
 	}
 }
 
+/**
+ * Pure neutral white/silver-gray snow blend:
+ * In Tristram's town.pal, averaging PAL16_GRAY or PAL16_BLUE with brown/tan dirt pixels
+ * via unconstrained paletteTransparencyLookup matches warm salmon/pinkish-orange entries
+ * in PAL16_BEIGE. To guarantee snowflakes on the ground and in the air are 100% pure white
+ * and neutral silver-gray, we blend the background pixel's luminance toward snow white (242)
+ * and quantize strictly within PAL16_GRAY + 1 .. PAL16_GRAY + 13 (where R == G == B).
+ */
+inline uint8_t BlendSnowWhitePx(uint8_t bg, int whiteWeight256)
+{
+	const SDL_Color &c = orig_palette[bg];
+	const int bgLum = (static_cast<int>(c.r) * 77 + static_cast<int>(c.g) * 150 + static_cast<int>(c.b) * 29) >> 8;
+	const int w = std::clamp(whiteWeight256, 0, 256);
+	const int targetLum = (bgLum * (256 - w) + 244 * w) >> 8;
+	// PAL16_GRAY + 1 is brightest white (~242), PAL16_GRAY + 13 is dark slate gray (~32)
+	const int grayStep = std::clamp(14 - ((targetLum * 13 + 120) / 244), 1, 13);
+	return static_cast<uint8_t>(PAL16_GRAY + grayStep);
+}
+
+inline void PlotSnowWhitePx(const Surface &out, int x, int y, int whiteWeight256)
+{
+	if (x >= 0 && x < out.w() && y >= 0 && y < out.h()) {
+		uint8_t &px = out[{ x, y }];
+		px = BlendSnowWhitePx(px, whiteWeight256);
+	}
+}
+
+uint32_t NextWeatherEntropy()
+{
+	static uint64_t sState = 0;
+	if (sState == 0) {
+		sState = static_cast<uint64_t>(SDL_GetPerformanceCounter())
+		    ^ (static_cast<uint64_t>(SDL_GetTicks()) << 32)
+		    ^ 0x9E3779B97F4A7C15ULL;
+	} else {
+		sState ^= static_cast<uint64_t>(SDL_GetPerformanceCounter()) * 0xBF58476D1CE4E5B9ULL;
+	}
+	uint64_t z = (sState += 0x9E3779B97F4A7C15ULL);
+	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+	z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+	return static_cast<uint32_t>((z ^ (z >> 31)) & 0xFFFFFFFFULL);
+}
+
 inline Point CalcCameraWorldPixel(Point startTilePosition, Displacement offset)
 {
 	const int camX = (startTilePosition.x - startTilePosition.y) * (TILE_WIDTH / 2) - offset.deltaX;
@@ -328,20 +371,26 @@ void ScheduleNextLightning(uint32_t nowTick)
 
 void RollRainIntensity()
 {
-	// On the first roll of a New Game session (!gHasGameRainRoll), roll with equal probability
-	// (1/3 each) between Rain, Snow, and Ash Storm. Whichever rolls stays locked for the entire
-	// game session; subsequent calls (after >= 60s in a dungeon) only roll Light vs Heavy intensity!
+	// On the first roll of a game session (!gHasGameRainRoll), roll with equal 1/3 probability
+	// between Rain, Snow, and AshStorm using hardware timer entropy (with a shuffled 3-bag so
+	// loading the same save file never gets stuck on a deterministic LCG seed!).
 	if (!gHasGameRainRoll) {
-		const int kindRoll = GenerateRnd(3);
-		if (kindRoll == 0) {
-			gTownWeatherKind = TownWeatherKind::Rain;
-		} else if (kindRoll == 1) {
-			gTownWeatherKind = TownWeatherKind::Snow;
-		} else {
-			gTownWeatherKind = TownWeatherKind::AshStorm;
+		static std::array<TownWeatherKind, 3> sWeatherBag = {
+			TownWeatherKind::Rain,
+			TownWeatherKind::Snow,
+			TownWeatherKind::AshStorm,
+		};
+		static size_t sBagIndex = 3;
+		if (sBagIndex >= 3) {
+			for (size_t i = 2; i > 0; --i) {
+				const size_t j = NextWeatherEntropy() % (i + 1U);
+				std::swap(sWeatherBag[i], sWeatherBag[j]);
+			}
+			sBagIndex = 0;
 		}
+		gTownWeatherKind = sWeatherBag[sBagIndex++];
 	}
-	gCurrentRainMode = (GenerateRnd(100) < 50) ? RainMode::Light : RainMode::Heavy;
+	gCurrentRainMode = ((NextWeatherEntropy() % 100U) < 50U) ? RainMode::Light : RainMode::Heavy;
 	gHeavyBlend = (gCurrentRainMode == RainMode::Heavy) ? 1.0F : 0.0F;
 	gHasGameRainRoll = true;
 }
@@ -350,9 +399,14 @@ void InitRainDrop(RainDrop &drop, int viewW, int viewH, bool randomY)
 {
 	const int marginX = 144;
 	drop.x = static_cast<float>(GenerateRnd(std::max(1, viewW + marginX * 2)) - marginX);
-	drop.y = randomY
-	    ? static_cast<float>(GenerateRnd(std::max(1, viewH)))
-	    : -static_cast<float>(GenerateRnd(64));
+	if (gTownWeatherKind == TownWeatherKind::AshStorm) {
+		// In AshStorm (horizontal whirlwind), particles enter across the full vertical height
+		drop.y = static_cast<float>(GenerateRnd(std::max(1, viewH)));
+	} else {
+		drop.y = randomY
+		    ? static_cast<float>(GenerateRnd(std::max(1, viewH)))
+		    : -static_cast<float>(GenerateRnd(64));
+	}
 
 	const int roll = GenerateRnd(100);
 	const int layer0Cutoff = (gTownWeatherKind == TownWeatherKind::Rain) ? 42 : 20;
@@ -589,41 +643,62 @@ void DrawSinglePuddleSplash(const Surface &out, Point center, uint8_t stage, uin
 
 void DrawSingleSettlingSnowFlake(const Surface &out, Point center, uint8_t stage, uint8_t variant)
 {
-	if (center.x < -6 || center.x >= out.w() + 6 || center.y < -6 || center.y >= out.h() + 6)
+	if (center.x < -8 || center.x >= out.w() + 8 || center.y < -8 || center.y >= out.h() + 8)
 		return;
 
-	const bool isAshMode = (gTownWeatherKind == TownWeatherKind::AshStorm);
-	const bool isEmber = isAshMode && ((variant & 3U) == 0U);
-	const uint8_t brightCol = isEmber
-	    ? static_cast<uint8_t>(PAL16_ORANGE + 2 + (variant & 1U))
-	    : (isAshMode
-	            ? static_cast<uint8_t>(PAL16_GRAY + 5 + (variant & 1U))
-	            : static_cast<uint8_t>(PAL16_GRAY + 1 + (variant & 1U)));
-	const uint8_t softCol = isEmber
-	    ? static_cast<uint8_t>(PAL16_RED + 4 + (variant & 1U))
-	    : (isAshMode
-	            ? static_cast<uint8_t>(PAL16_GRAY + 8 + (variant & 1U))
-	            : static_cast<uint8_t>(PAL16_BLUE + 2 + (variant & 1U)));
+	if (gTownWeatherKind == TownWeatherKind::Snow) {
+		// Pure neutral snow white (never pinky-orange on brown Town dirt!)
+		switch (stage) {
+		case 0:
+		case 1:
+		case 2:
+			PlotSnowWhitePx(out, center.x, center.y, 210);
+			PlotSnowWhitePx(out, center.x - 1, center.y, 135);
+			PlotSnowWhitePx(out, center.x + 1, center.y, 135);
+			PlotSnowWhitePx(out, center.x, center.y - 1, 110);
+			PlotSnowWhitePx(out, center.x, center.y + 1, 110);
+			break;
+		case 3:
+			PlotSnowWhitePx(out, center.x, center.y, 155);
+			PlotSnowWhitePx(out, center.x - 1, center.y, 95);
+			PlotSnowWhitePx(out, center.x + 1, center.y, 95);
+			break;
+		default:
+			PlotSnowWhitePx(out, center.x, center.y, 90);
+			PlotSnowWhitePx(out, center.x + 1, center.y, 65);
+			break;
+		}
+		return;
+	}
 
-	switch (stage) {
-	case 0:
-	case 1:
-	case 2:
-		PlotBlended75(out, center.x, center.y, brightCol);
-		PlotBlended37(out, center.x - 1, center.y, softCol);
-		PlotBlended37(out, center.x + 1, center.y, softCol);
-		PlotBlended25(out, center.x, center.y - 1, softCol);
-		PlotBlended25(out, center.x, center.y + 1, softCol);
-		break;
-	case 3:
-		PlotBlended50(out, center.x, center.y, brightCol);
-		PlotBlended25(out, center.x - 1, center.y, softCol);
-		PlotBlended25(out, center.x + 1, center.y, softCol);
-		break;
-	default:
-		PlotBlended25(out, center.x, center.y, softCol);
-		PlotBlended19(out, center.x + 1, center.y, softCol);
-		break;
+	// AshStorm mode: horizontal skittering sand/ash streak blown across the ground!
+	const int skitterX = center.x - static_cast<int>(stage) * 3;
+	const int skitterY = center.y + ((variant & 1U) != 0 ? 1 : -1) * (static_cast<int>(stage) >> 1);
+	const bool isEmber = ((variant & 7U) == 0U);
+	const bool isSand = ((variant & 3U) == 1U || (variant & 3U) == 2U);
+	const uint8_t headCol = isEmber
+	    ? static_cast<uint8_t>(PAL16_ORANGE + 2 + (variant & 1U))
+	    : (isSand
+	            ? static_cast<uint8_t>(PAL16_YELLOW + 11 + (variant & 1U))
+	            : static_cast<uint8_t>(PAL16_GRAY + 5 + (variant & 1U)));
+	const uint8_t tailCol = isEmber
+	    ? static_cast<uint8_t>(PAL16_RED + 4 + (variant & 1U))
+	    : (isSand
+	            ? static_cast<uint8_t>(PAL16_BEIGE + 9 + (variant & 1U))
+	            : static_cast<uint8_t>(PAL16_GRAY + 8 + (variant & 1U)));
+
+	if (stage <= 2) {
+		PlotBlended75(out, skitterX, skitterY, headCol);
+		PlotBlended50(out, skitterX + 1, skitterY, headCol);
+		PlotBlended37(out, skitterX + 2, skitterY, tailCol);
+		PlotBlended25(out, skitterX + 3, skitterY, tailCol);
+	} else if (stage == 3) {
+		PlotBlended50(out, skitterX, skitterY, headCol);
+		PlotBlended37(out, skitterX + 1, skitterY, tailCol);
+		PlotBlended25(out, skitterX + 2, skitterY, tailCol);
+	} else {
+		PlotBlended25(out, skitterX, skitterY, tailCol);
+		PlotBlended19(out, skitterX + 1, skitterY, tailCol);
 	}
 }
 
@@ -803,6 +878,9 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 	const uint32_t nowTick = SDL_GetTicks();
 
 	if (firstflag || !gHasGameRainRoll) {
+		if (firstflag) {
+			gHasGameRainRoll = false;
+		}
 		RollRainIntensity();
 		gInDungeon = false;
 		gDungeonEnterTick = 0;
@@ -958,7 +1036,13 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	gCamWorldPixel = newCamWorldPixel;
 	gHasPrevCamPos = true;
 
-	const float baseFogWindX = -(15.0F + 11.0F * gHeavyBlend);
+	const bool isSnowMode = (gTownWeatherKind == TownWeatherKind::Snow);
+	const bool isAshMode = (gTownWeatherKind == TownWeatherKind::AshStorm);
+	const bool isBlizzard = isSnowMode && (gHeavyBlend >= 0.5F);
+
+	const float baseFogWindX = isAshMode
+	    ? -(62.0F + 42.0F * gHeavyBlend)
+	    : -(15.0F + 11.0F * gHeavyBlend);
 	const float wrapW = static_cast<float>(FogWorldWrapW);
 	const float wrapH = static_cast<float>(FogWorldWrapH);
 	const float halfW = wrapW * 0.5F;
@@ -972,7 +1056,7 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 		}
 
 		const float waveVelY = std::sin(bank.phase * bank.swayFreq + static_cast<float>(i) * 1.1F) * bank.swayAmpY;
-		const float waveVelX = std::cos(bank.phase * 0.5F + static_cast<float>(i) * 0.7F) * 3.5F;
+		const float waveVelX = std::cos(bank.phase * 0.5F + static_cast<float>(i) * 0.7F) * (isAshMode ? 14.0F : 3.5F);
 
 		bank.worldX += (baseFogWindX * bank.speedMultX + waveVelX) * dt;
 		bank.worldY += (bank.driftVelY + waveVelY) * dt;
@@ -1032,23 +1116,18 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 			bank.worldY -= wrapH;
 	}
 
-	const bool isSnowMode = (gTownWeatherKind == TownWeatherKind::Snow);
-	const bool isAshMode = (gTownWeatherKind == TownWeatherKind::AshStorm);
-	const bool isBlizzard = isSnowMode && (gHeavyBlend >= 0.5F);
 	const float baseFallSpeed = isBlizzard
 	    ? 395.0F
 	    : (isSnowMode
 	            ? 145.0F
-	            : (isAshMode
-	                    ? (130.0F + 95.0F * gHeavyBlend)
-	                    : (460.0F + 190.0F * gHeavyBlend)));
+	            : (460.0F + 190.0F * gHeavyBlend));
 	const int marginX = 144;
 	const size_t activeDropCount = GetActiveWeatherDropCount();
 	const float simSec = static_cast<float>(gWeatherSimTick) * 0.001F;
 
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		RainDrop &drop = gRainDrops[i];
-		const float vy = baseFallSpeed * drop.speedScale;
+		float vy = baseFallSpeed * drop.speedScale;
 		float vx = vy * GetLayerBaseSlant(drop.layer, gHeavyBlend);
 		if (isBlizzard) {
 			const float gust = 1.0F + 0.32F * std::sin(simSec * 3.4F + static_cast<float>(i) * 0.19F);
@@ -1057,8 +1136,13 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 			const float sway = std::sin(simSec * 2.1F + static_cast<float>(i) * 0.37F) * (24.0F * drop.parallaxScale);
 			vx = vx * 0.45F + sway;
 		} else if (isAshMode) {
-			const float swirl = std::sin(simSec * 2.7F + static_cast<float>(i) * 0.53F) * (36.0F * drop.parallaxScale);
-			vx = vx * (0.75F + 0.35F * gHeavyBlend) + swirl;
+			// Horizontal whirlwind / sandstorm kinematics: strong horizontal gale with sinusoidal vertical eddies
+			const float vortexPhase = simSec * 5.2F + drop.x * 0.011F - drop.y * 0.009F + static_cast<float>(i) * 0.13F;
+			const float gust = 1.0F + 0.36F * std::cos(simSec * 3.1F + drop.y * 0.014F + static_cast<float>(i) * 0.09F);
+			const float layerSpeedBoost = 0.80F + 0.18F * static_cast<float>(drop.layer);
+			vx = -(450.0F + 240.0F * gHeavyBlend) * drop.speedScale * layerSpeedBoost * gust;
+			vy = (38.0F + 24.0F * gHeavyBlend) * drop.speedScale
+			    + std::sin(vortexPhase) * (145.0F + 80.0F * gHeavyBlend) * drop.parallaxScale;
 		}
 
 		drop.x += vx * dt - static_cast<float>(camDeltaX) * drop.parallaxScale;
@@ -1075,7 +1159,11 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 
 		const float maxY = static_cast<float>(viewH + 64);
 		if (drop.y >= maxY) {
-			InitRainDrop(drop, viewW, viewH, /*randomY=*/false);
+			if (isAshMode) {
+				drop.y -= static_cast<float>(viewH + 96);
+			} else {
+				InitRainDrop(drop, viewW, viewH, /*randomY=*/false);
+			}
 		} else if (drop.y < -64.0F) {
 			drop.y += static_cast<float>(viewH + 96);
 		}
@@ -1188,6 +1276,15 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 	const float slant0 = isBlizzard ? -0.68F : GetLayerBaseSlant(0, gHeavyBlend);
 	const size_t activeDropCount = GetActiveWeatherDropCount();
 
+	auto recordBgPixel = [&](int px, int py, uint8_t blended) {
+		if (px < 0 || px >= viewW || py < 0 || py >= viewH)
+			return;
+		const uint8_t origPx = out[{ px, py }];
+		gBgRainMask[static_cast<size_t>(py) * static_cast<size_t>(viewW) + static_cast<size_t>(px)]
+		    = static_cast<uint16_t>((static_cast<uint16_t>(origPx) << 8) | blended);
+		gBgRainBlockGrid[static_cast<size_t>(py >> 4) * static_cast<size_t>(gBgRainBlockCols) + static_cast<size_t>(px >> 4)] = 1U;
+	};
+
 	for (size_t idx = 0; idx < activeDropCount; ++idx) {
 		const RainDrop &drop = gRainDrops[idx];
 		if (drop.layer != 0)
@@ -1195,19 +1292,39 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 
 		const int x0 = static_cast<int>(drop.x);
 		const int y0 = static_cast<int>(drop.y);
-		if (isSnowMode || isAshMode) {
+		if (isSnowMode) {
+			// +30% larger Layer 0 background snow cluster using pure neutral white/silver-gray blending
 			if (x0 >= 0 && x0 < viewW && y0 >= 0 && y0 < viewH) {
-				const bool isEmber = isAshMode && ((idx & 7U) == 0U);
-				const uint8_t flakeCol = isEmber
-				    ? static_cast<uint8_t>(PAL16_ORANGE + 3 + (idx & 1U))
-				    : (isAshMode
-				            ? static_cast<uint8_t>(PAL16_GRAY + 7 + (idx & 1U))
-				            : static_cast<uint8_t>(PAL16_GRAY + 2 + (idx & 1U)));
-				const uint8_t blended = isEmber ? Blend50(flakeCol, out[{ x0, y0 }]) : Blend37(flakeCol, out[{ x0, y0 }]);
-				out[{ x0, y0 }] = blended;
-				gBgRainMask[static_cast<size_t>(y0) * static_cast<size_t>(viewW) + static_cast<size_t>(x0)]
-				    = static_cast<uint16_t>((static_cast<uint16_t>(out[{ x0, y0 }]) << 8) | blended);
-				gBgRainBlockGrid[static_cast<size_t>(y0 >> 4) * static_cast<size_t>(gBgRainBlockCols) + static_cast<size_t>(x0 >> 4)] = 1U;
+				recordBgPixel(x0, y0, BlendSnowWhitePx(out[{ x0, y0 }], 118));
+			}
+			if (x0 + 1 >= 0 && x0 + 1 < viewW && y0 >= 0 && y0 < viewH) {
+				recordBgPixel(x0 + 1, y0, BlendSnowWhitePx(out[{ x0 + 1, y0 }], 76));
+			}
+			if ((idx & 1U) == 0U && x0 >= 0 && x0 < viewW && y0 + 1 >= 0 && y0 + 1 < viewH) {
+				recordBgPixel(x0, y0 + 1, BlendSnowWhitePx(out[{ x0, y0 + 1 }], 64));
+			}
+			continue;
+		}
+
+		if (isAshMode) {
+			// Horizontal sand/ash streak in Layer 0
+			const bool isEmber = ((idx & 15U) == 0U);
+			const bool isSand = ((idx & 3U) != 0U);
+			const uint8_t col = isEmber
+			    ? static_cast<uint8_t>(PAL16_ORANGE + 3 + (idx & 1U))
+			    : (isSand
+			            ? static_cast<uint8_t>(PAL16_YELLOW + 12 + (idx & 1U))
+			            : static_cast<uint8_t>(PAL16_GRAY + 7 + (idx & 1U)));
+			for (int s = 0; s < 3; ++s) {
+				const int px = x0 + s;
+				const int py = y0;
+				if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+					const uint8_t origPx = out[{ px, py }];
+					const uint8_t blended = (s == 0)
+					    ? (isEmber ? Blend50(col, origPx) : Blend37(col, origPx))
+					    : Blend25(col, origPx);
+					recordBgPixel(px, py, blended);
+				}
 			}
 			continue;
 		}
@@ -1224,9 +1341,7 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 			    ? Blend12(drop.colorIndex, origPx)
 			    : Blend25(drop.colorIndex, origPx);
 
-			gBgRainMask[static_cast<size_t>(py) * static_cast<size_t>(viewW) + static_cast<size_t>(px)]
-			    = static_cast<uint16_t>((static_cast<uint16_t>(origPx) << 8) | blendedPx);
-			gBgRainBlockGrid[static_cast<size_t>(py >> 4) * static_cast<size_t>(gBgRainBlockCols) + static_cast<size_t>(px >> 4)] = 1U;
+			recordBgPixel(px, py, blendedPx);
 		}
 	}
 }
@@ -1309,6 +1424,7 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 	const float slant1 = isBlizzard ? -0.78F : GetLayerBaseSlant(1, gHeavyBlend);
 	const float slant2 = isBlizzard ? -0.92F : GetLayerBaseSlant(2, gHeavyBlend);
 	const size_t activeDropCount = GetActiveWeatherDropCount();
+	const float simSec = static_cast<float>(gWeatherSimTick) * 0.001F;
 
 	for (size_t idx = 0; idx < activeDropCount; ++idx) {
 		const RainDrop &drop = gRainDrops[idx];
@@ -1319,54 +1435,94 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		const int y0 = static_cast<int>(drop.y);
 		const int len = static_cast<int>(drop.length);
 
-		if (isSnowMode || isAshMode) {
-			if (x0 < -4 || x0 >= viewW + 4 || y0 < -4 || y0 >= viewH + 4)
+		if (isSnowMode) {
+			if (x0 < -6 || x0 >= viewW + 6 || y0 < -6 || y0 >= viewH + 6)
 				continue;
-			const bool isEmber = isAshMode && ((idx % 5U) == 0U);
-			const uint8_t coreCol = isEmber
-			    ? static_cast<uint8_t>(PAL16_ORANGE + 1 + (idx & 1U))
-			    : (isAshMode
-			            ? static_cast<uint8_t>(PAL16_GRAY + 5 + (idx & 1U))
-			            : static_cast<uint8_t>(PAL16_GRAY + 1 + (idx & 1U)));
-			const uint8_t haloCol = isEmber
-			    ? static_cast<uint8_t>(PAL16_RED + 3 + (idx & 1U))
-			    : (isAshMode
-			            ? static_cast<uint8_t>(PAL16_GRAY + 8 + (idx & 1U))
-			            : static_cast<uint8_t>(PAL16_BLUE + 2 + (idx & 1U)));
 
 			if (drop.layer == 1) {
+				// +30% larger Layer 1 falling snowflake (8-9px crisp crystal with pure white/silver-gray blending)
+				PlotSnowWhitePx(out, x0, y0, 215);
+				PlotSnowWhitePx(out, x0 - 1, y0, 165);
+				PlotSnowWhitePx(out, x0 + 1, y0, 165);
+				PlotSnowWhitePx(out, x0, y0 - 1, 165);
+				PlotSnowWhitePx(out, x0, y0 + 1, 165);
 				if (isBlizzard) {
-					PlotBlended75(out, x0, y0, coreCol);
-					PlotBlended50(out, x0 - 1, y0, coreCol);
-					PlotBlended37(out, x0 + 1, y0 - 1, haloCol);
-					PlotBlended25(out, x0 + 2, y0 - 2, haloCol);
-				} else if (isEmber) {
-					PlotBlended75(out, x0, y0, coreCol);
-					PlotBlended50(out, x0 + 1, y0, haloCol);
-					PlotBlended37(out, x0, y0 - 1, haloCol);
+					PlotSnowWhitePx(out, x0 + 1, y0 - 1, 130);
+					PlotSnowWhitePx(out, x0 + 2, y0 - 1, 105);
+					PlotSnowWhitePx(out, x0 + 2, y0 - 2, 85);
+					PlotSnowWhitePx(out, x0 + 3, y0 - 2, 60);
 				} else {
-					PlotBlended75(out, x0, y0, coreCol);
-					PlotBlended37(out, x0 - 1, y0, haloCol);
-					PlotBlended37(out, x0 + 1, y0, haloCol);
-					PlotBlended25(out, x0, y0 - 1, haloCol);
-					PlotBlended25(out, x0, y0 + 1, haloCol);
+					PlotSnowWhitePx(out, x0 - 1, y0 - 1, 105);
+					PlotSnowWhitePx(out, x0 + 1, y0 - 1, 105);
+					PlotSnowWhitePx(out, x0 - 1, y0 + 1, 105);
+					PlotSnowWhitePx(out, x0 + 1, y0 + 1, 105);
 				}
 			} else {
+				// +30% larger Layer 2 near-camera DoF snowflake (~13px soft crystal)
+				PlotSnowWhitePx(out, x0, y0, 230);
+				PlotSnowWhitePx(out, x0 - 1, y0, 190);
+				PlotSnowWhitePx(out, x0 + 1, y0, 190);
+				PlotSnowWhitePx(out, x0, y0 - 1, 190);
+				PlotSnowWhitePx(out, x0, y0 + 1, 190);
+				PlotSnowWhitePx(out, x0 - 1, y0 - 1, 145);
+				PlotSnowWhitePx(out, x0 + 1, y0 - 1, 145);
+				PlotSnowWhitePx(out, x0 - 1, y0 + 1, 145);
+				PlotSnowWhitePx(out, x0 + 1, y0 + 1, 145);
+				PlotSnowWhitePx(out, x0 - 2, y0, 95);
+				PlotSnowWhitePx(out, x0 + 2, y0, 95);
+				PlotSnowWhitePx(out, x0, y0 - 2, 95);
+				PlotSnowWhitePx(out, x0, y0 + 2, 95);
 				if (isBlizzard) {
-					PlotBlended75(out, x0, y0, coreCol);
-					PlotBlended50(out, x0 - 1, y0, coreCol);
-					PlotBlended50(out, x0, y0 - 1, coreCol);
-					PlotBlended37(out, x0 + 1, y0 - 1, haloCol);
-					PlotBlended25(out, x0 + 2, y0 - 2, haloCol);
-					PlotBlended19(out, x0 + 3, y0 - 3, haloCol);
+					PlotSnowWhitePx(out, x0 + 2, y0 - 1, 120);
+					PlotSnowWhitePx(out, x0 + 3, y0 - 2, 85);
+					PlotSnowWhitePx(out, x0 + 4, y0 - 2, 55);
+				}
+			}
+			continue;
+		}
+
+		if (isAshMode) {
+			if (x0 < -12 || x0 >= viewW + 12 || y0 < -12 || y0 >= viewH + 12)
+				continue;
+
+			// Horizontal whirlwind / sandstorm rendering: sweeping curved horizontal sand & ash ribbons
+			const bool isEmber = ((idx % 9U) == 0U);
+			const bool isFineSand = ((idx % 3U) != 0U);
+			const uint8_t headCol = isEmber
+			    ? static_cast<uint8_t>(PAL16_ORANGE + 2 + (idx & 1U))
+			    : (isFineSand
+			            ? static_cast<uint8_t>(PAL16_YELLOW + 11 + (idx & 3U))
+			            : static_cast<uint8_t>(PAL16_BEIGE + 8 + (idx & 3U)));
+			const uint8_t tailCol = isEmber
+			    ? static_cast<uint8_t>(PAL16_RED + 4 + (idx & 1U))
+			    : (isFineSand
+			            ? static_cast<uint8_t>(PAL16_BEIGE + 10 + (idx & 3U))
+			            : static_cast<uint8_t>(PAL16_GRAY + 7 + (idx & 3U)));
+
+			const float vortexPhase = simSec * 5.2F + drop.x * 0.011F - drop.y * 0.009F + static_cast<float>(idx) * 0.13F;
+			const float slopeY = std::sin(vortexPhase) * 0.34F - 0.08F;
+			const int streakLen = (drop.layer == 1)
+			    ? (5 + static_cast<int>(idx % 3U))
+			    : (8 + static_cast<int>(idx % 4U));
+
+			for (int s = 0; s < streakLen; ++s) {
+				// Trail extends to the right (+s) behind the leftward-whipping particle
+				const float curveY = static_cast<float>(s) * slopeY + std::sin(vortexPhase + static_cast<float>(s) * 0.45F) * 0.65F;
+				const int px = x0 + s;
+				const int py = y0 + static_cast<int>(std::lround(curveY));
+
+				if (s == 0) {
+					PlotBlended75(out, px, py, headCol);
+					if (drop.layer == 2) {
+						PlotBlended37(out, px, py - 1, headCol);
+					}
+				} else if (s * 2 < streakLen) {
+					PlotBlended50(out, px, py, headCol);
+					if (drop.layer == 2) {
+						PlotBlended25(out, px, py + 1, tailCol);
+					}
 				} else {
-					PlotBlended75(out, x0, y0, coreCol);
-					PlotBlended50(out, x0 - 1, y0, coreCol);
-					PlotBlended50(out, x0 + 1, y0, coreCol);
-					PlotBlended50(out, x0, y0 - 1, coreCol);
-					PlotBlended50(out, x0, y0 + 1, coreCol);
-					PlotBlended25(out, x0 - 1, y0 - 1, haloCol);
-					PlotBlended25(out, x0 + 1, y0 + 1, haloCol);
+					PlotBlended25(out, px, py, tailCol);
 				}
 			}
 			continue;

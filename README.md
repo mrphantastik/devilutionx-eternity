@@ -1,4 +1,4 @@
-<p align="center">.
+<p align="center">
   <img src="assets/new-splash.png" alt="Alt Text" width="70%">
 </p>
 
