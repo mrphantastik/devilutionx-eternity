@@ -262,7 +262,7 @@ uint32_t GetLevelPaletteHash(dungeon_type l)
  */
 void ApplyCavesLavaVariant(uint32_t hash)
 {
-	const uint32_t variant = (hash >> 4) & 3U;
+	const uint32_t variant = (hash >> 4) % 3U;
 
 	for (int i = 1; i <= 31; i++) {
 		const float r0 = orig_palette[i].r / 255.0F;
@@ -289,15 +289,10 @@ void ApplyCavesLavaVariant(uint32_t hash)
 			bp = clamp(t2 * 0.26F, 0.0F, 1.0F);
 			break;
 		case 2: // Poison / Toxic Acid-Lava (Venomous Green)
+		default:
 			rp = clamp(t2 * 0.50F + t * 0.08F, 0.0F, 1.0F);
 			gp = clamp(t * 1.22F, 0.0F, 1.0F);
 			bp = clamp(t2 * 0.24F + t * 0.05F, 0.0F, 1.0F);
-			break;
-		case 3: // Subterranean Phosphene (Bioluminescent Cyan-Teal)
-		default:
-			rp = clamp(t2 * t * 0.26F, 0.0F, 1.0F);
-			gp = clamp(t * 1.04F + t2 * 0.10F, 0.0F, 1.0F);
-			bp = clamp(t * 1.22F, 0.0F, 1.0F);
 			break;
 		}
 
@@ -524,7 +519,43 @@ void LoadRndLvlPal(dungeon_type l)
 			if (!IsMultiHuePalette(palData))
 				continue; // Reject flat 1-color monochrome preset and try next preset
 
+			// Load the vanilla base palette first so animated/special ramps (like Hell's
+			// red blood/lava ramp 1..31) have their authentic vanilla shades ready
+			if (l == DTYPE_CRYPT) {
+				LoadPalette("nlevels\\l5data\\l5base.pal", /*blend=*/false);
+			} else if (l == DTYPE_NEST) {
+				const int nestRv = (!*sgOptions.Graphics.alternateNestArt) ? (rv + 1) : rv;
+				char szBase[32];
+				*fmt::format_to(szBase, R"(nlevels\l6data\l6base{0}.pal)", nestRv) = '\0';
+				LoadPalette(szBase, /*blend=*/false);
+			} else {
+				char szBase[32];
+				*fmt::format_to(szBase, R"(levels\l{0}data\l{0}_{1}.pal)", static_cast<int>(l), rv) = '\0';
+				LoadPalette(szBase, /*blend=*/false);
+			}
+
 			for (unsigned i = 0; i < palData.size(); i++) {
+				if (l == DTYPE_HELL) {
+					// In Hell, indices 1..31 are the animated red blood/lava ramp, and strongly red
+					// vanilla entries in 32..127 are Hell's blood/flesh/lava — always keep them red!
+					if (i >= 1 && i <= 31)
+						continue;
+					if (i >= 32 && i < 128) {
+						const int vr = orig_palette[i].r;
+						const int vg = orig_palette[i].g;
+						const int vb = orig_palette[i].b;
+						if (vr > 36 && vr > (vg * 3) / 2 && vr > (vb * 3) / 2) {
+							// Keep red-dominant Hell blood/lava/flesh in the red family
+							// (scale brightness by palData luminance while preserving vanilla red ratio)
+							const int vLum = std::max(1, vr * 2 + vg * 3 + vb);
+							const int pLum = static_cast<int>(palData[i].r) * 2 + static_cast<int>(palData[i].g) * 3 + static_cast<int>(palData[i].b);
+							orig_palette[i].r = static_cast<Uint8>(clamp((vr * pLum) / vLum, 0, 255));
+							orig_palette[i].g = static_cast<Uint8>(clamp((vg * pLum) / vLum, 0, 255));
+							orig_palette[i].b = static_cast<Uint8>(clamp((vb * pLum) / vLum, 0, 255));
+							continue;
+						}
+					}
+				}
 				orig_palette[i].r = palData[i].r;
 				orig_palette[i].g = palData[i].g;
 				orig_palette[i].b = palData[i].b;
@@ -549,7 +580,7 @@ void LoadRndLvlPal(dungeon_type l)
 	if (l == DTYPE_CRYPT) {
 		LoadPalette("nlevels\\l5data\\l5base.pal");
 		if (*sgOptions.Graphics.randomizePalette)
-			ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
+			ApplyLevelPaletteVariation(GetLevelPaletteHash(l));
 		return;
 	}
 
@@ -564,7 +595,7 @@ void LoadRndLvlPal(dungeon_type l)
 	}
 	LoadPalette(szFileName);
 	if (*sgOptions.Graphics.randomizePalette)
-		ApplyProceduralPaletteShift(GetLevelPaletteHash(l));
+		ApplyLevelPaletteVariation(GetLevelPaletteHash(l));
 }
 
 void IncreaseGamma()

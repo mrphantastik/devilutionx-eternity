@@ -122,7 +122,7 @@
 
 ### 4.2 Pure Classic Diablo Loot in Nest & Crypt
 - **File:** `Source/items.cpp` — `IsItemAvailable()` & `InitItems()`
-  - Blocked all Hellfire oils (`IMISC_OILFIRST..IMISC_OILLAST`), runes (`IMISC_RUNEFIRST..IMISC_RUNELAST`), and Hellfire-only base items (`i > 160`) when `!gbIsHellfire`.
+  - Blocked all Hellfire oils (`IMISC_OILFIRST..IMISC_OILLAST`), runes (`IMISC_RUNEFIRST..IMISC_RUNELAST`), and Hellfire-only base items (`i > 160`, while whitelisting `IsAnyOf(i, IDI_SORCERER_DIABLO, IDI_BARBARIAN)` which have `iRnd == IDROP_NEVER` so `UnPackItem` / `RemapItemIdxFromDiablo(5) -> 166` validates the Sorcerer and Barbarian starting weapons cleanly) when `!gbIsHellfire`.
   - Enabled floor potion initialization (`AddInitItems()`) on Nest and Crypt levels (`currlevel > 0 && currlevel != 16`) and gated `SpawnNote()` behind `gbIsHellfire`.
 - **File:** `Source/monster.cpp` — `SpawnLoot()`
   - Updated `UniqueMonsterType::Defiler` to drop a standard boss item (`SpawnItem(monster, ...)`) instead of the Hellfire-only `Cathedral Map` (`SpawnMapOfDoom`) when `!gbIsHellfire`.
@@ -564,3 +564,39 @@
 ### 12.3 Maxed-Out Item Stat Rolls on `DIFF_TORMENT` (`Source/items.h`, `Source/items.cpp`, `Source/pack.cpp`, `Source/msg.cpp`)
 - Added `CF_TORMENT = 1 << 1` to `enum icreateinfo_flag2` (`Item::dwBuff`) and preserved it across `InitializeItem`, `GetItemAttrs`, `UnPackItem` (`Source/pack.cpp`), and network `RecreateItem` (`Source/msg.cpp`) so items generated in Torment retain their maxed-out stats across save/load and character unpacking.
 - Every rolled item stat (`RndPL` via `SaveItemPower` for all magic prefixes, suffixes, To-Hit bonuses, and unique item variable powers; `GetItemAttrs` for base armor class `iMaxAC` and `+30%` max gold piles; `GetStaffSpell` for `sStaffMax` charges; `ItemRndDur` for full `100%` `item._iMaxDur` starting durability) still consumes its exact `GenerateRnd(...)` call so LCG state and `GetTranslatedItemNameMagical` never desync, and returns the **maximum possible roll**.
+
+### 12.4 Closed Realm Server-Vault Sync (`IsItemAvailable`) & Ground Fog v6 / Palette / Weather / Audio Polish (`Source/items.cpp`, `Source/engine/palette.cpp`, `Source/engine/render/ground_fog.cpp`, `Source/engine/render/weather.cpp`)
+- **Client-Server `IsItemAvailable()` Parity (`Source/items.cpp`):**
+  - Whitelisted `IsAnyOf(i, IDI_SORCERER_DIABLO, IDI_BARBARIAN)` before `i <= 160` in `IsItemAvailable(int i)` when `!gbIsHellfire` so `UnPackItem()` (`RemapItemIdxFromDiablo(5) -> 166`) validates the Sorcerer's starting staff (`IDI_SORCERER_DIABLO = 166`) and Barbarian's starting club (`IDI_BARBARIAN = 132`) identically to the Closed Realm Server-Vault without affecting dungeon drop LCG (`iRnd == IDROP_NEVER`).
+- **Hell Red Palette Preservation & Caves-Only Lava Variants (`Source/engine/palette.cpp`):**
+  - Replaced `ApplyProceduralPaletteShift` (which performed a global `35°..325°` HSV hue rotation on all dungeons, turning Hell teal) with `ApplyLevelPaletteVariation`, which restricts procedural lava recoloring (`ApplyCavesLavaVariant`: Molten Magma Orange-Amber, Sulfuric Brimstone Golden-Yellow, and Poison Green) strictly to `DTYPE_CAVES` (`indices 1..31`).
+  - Updated `LoadRndLvlPal()` for `DTYPE_HELL` to preserve authentic red blood/lava/flesh entries (`1..31` and red-dominant entries in `32..127`) from vanilla `levels\l4data\l4_{rv}.pal`.
+- **Ground Fog v6 — Continuous Float FBM, 1:1 Texel Resolution, Lively Internal Swirl, Pure Neutral `PAL16_GRAY` Shading, 4x4 Bayer Dither & O(1) High-FPS Lookup (`Source/engine/render/ground_fog.cpp`):**
+  - Replaced integer domain-warp coordinate truncation in `EnsureFogNoiseInitialized()` with continuous floating-point `ValueNoiseTileableFloat(float fx, float fy, ...)`, increased `uvScale1 = 64` (`1:1` texel-to-pixel resolution) and `uvScale2 = 44`, and applied a `4x4` Bayer dither matrix (`Bayer4x4`, `-15..+15`) to eliminate blockiness and contour rings.
+  - Restored lively counter-rotating internal swirl motion in `UpdateCachedFogSheets30Hz()` (`warpDriftX1/Y1`, `warpDriftX2/Y2` with amplitudes `* 28..32` and `* 16..18`) decoupled from slow room travel, and precomputed `gCachedCanopySlope[256][256]` at 30 Hz so `DrawGroundFogTileBase()` uses `O(1)` array reads for locked 60+ FPS.
+  - Replaced `PAL16_BEIGE` (Diablo 1's salmon/red-tan ramp `192..207`) with pure neutral `PAL16_GRAY` (`240..254`) and added `ShadeFogColor()` so `PAL16_GRAY` never snaps to `0` (`Pure Black`) at `lightIndex >= 6` in Hell, making both fog layers and the darkening `Pure Black (0)` drop-shadow clearly visible in Cathedral, Catacombs, Caves, Hell, Hive, and Crypt.
+- **Caves Lava Bubbles Below Fog & 6-Tile Proximity Audio (`Source/engine/render/ground_fog.cpp`):**
+  - Moved `DrawCavesLavaBubblesTile()` before the ground fog compositor in `DrawGroundFogTileBase()` so lava bubbles render underneath the mist, and gated `SyncLavaBubbleAudio()` (`LS_LAVABUBBLES`) to `MaxHearRadius = 6` tiles with `dLight[x][y] < LightsMax` (visible within light radius).
+- **Tristram Snow & AshStorm Visibility (+35% Density & 2.1s Ground Linger, `Source/engine/render/weather.cpp`):**
+  - Increased `MaxRainDrops = 720` (`LightSnowAshDropCount = 320`, `HeavySnowAshDropCount = 720`), placed `82%` of Snow/AshStorm particles in visible air layers `1` and `2` (unoccluded by `gBgRainMask`), and boosted ground settling snowflakes to `4` slots per tile (`460‰` Heavy / `220‰` Light) with `2100 ms` linger duration.
+- **Static `libwinpthread` Single-Executable Packaging:**
+  - Removed dynamic `libwinpthread.dll.a` import stubs from the MinGW-w64 sysroot so `dx-eternity.exe` links `libwinpthread.a` statically and never requires `libwinpthread-1.dll` at launch.
+
+
+### 12.4 Closed Realm Server-Vault Sync (`IsItemAvailable`) & Ground Fog v6 / Palette / Weather / Audio Polish (`Source/items.cpp`, `Source/engine/palette.cpp`, `Source/engine/render/ground_fog.cpp`, `Source/engine/render/weather.cpp`)
+- **Client-Server `IsItemAvailable()` Parity (`Source/items.cpp`):**
+  - Whitelisted `IsAnyOf(i, IDI_SORCERER_DIABLO, IDI_BARBARIAN)` before `i <= 160` in `IsItemAvailable(int i)` when `!gbIsHellfire` so `UnPackItem()` (`RemapItemIdxFromDiablo(5) -> 166`) validates the Sorcerer's starting staff (`IDI_SORCERER_DIABLO = 166`) and Barbarian's starting club (`IDI_BARBARIAN = 132`) identically to the Closed Realm Server-Vault without affecting dungeon drop LCG (`iRnd == IDROP_NEVER`).
+- **Hell Red Palette Preservation & Caves-Only Lava Variants (`Source/engine/palette.cpp`):**
+  - Replaced `ApplyProceduralPaletteShift` (which performed a global `35°..325°` HSV hue rotation on all dungeons, turning Hell teal) with `ApplyLevelPaletteVariation`, which restricts procedural lava recoloring (`ApplyCavesLavaVariant`: Molten Magma Orange-Amber, Sulfuric Brimstone Golden-Yellow, and Poison Green) strictly to `DTYPE_CAVES` (`indices 1..31`).
+  - Updated `LoadRndLvlPal()` for `DTYPE_HELL` to preserve authentic red blood/lava/flesh entries (`1..31` and red-dominant entries in `32..127`) from vanilla `levels\l4data\l4_{rv}.pal`.
+- **Ground Fog v6 — Continuous Float FBM, 1:1 Texel Resolution, Lively Internal Swirl, Pure Neutral `PAL16_GRAY` Shading, 4x4 Bayer Dither & O(1) High-FPS Lookup (`Source/engine/render/ground_fog.cpp`):**
+  - Replaced integer domain-warp coordinate truncation in `EnsureFogNoiseInitialized()` with continuous floating-point `ValueNoiseTileableFloat(float fx, float fy, ...)`, increased `uvScale1 = 64` (`1:1` texel-to-pixel resolution) and `uvScale2 = 44`, and applied a `4x4` Bayer dither matrix (`Bayer4x4`, `-15..+15`) to eliminate blockiness and contour rings.
+  - Restored lively counter-rotating internal swirl motion in `UpdateCachedFogSheets30Hz()` (`warpDriftX1/Y1`, `warpDriftX2/Y2` with amplitudes `* 28..32` and `* 16..18`) decoupled from slow room travel, and precomputed `gCachedCanopySlope[256][256]` at 30 Hz so `DrawGroundFogTileBase()` uses `O(1)` array reads for locked 60+ FPS.
+  - Replaced `PAL16_BEIGE` (Diablo 1's salmon/red-tan ramp `192..207`) with pure neutral `PAL16_GRAY` (`240..254`) and added `ShadeFogColor()` so `PAL16_GRAY` never snaps to `0` (`Pure Black`) at `lightIndex >= 6` in Hell, making both fog layers and the darkening `Pure Black (0)` drop-shadow clearly visible in Cathedral, Catacombs, Caves, Hell, Hive, and Crypt.
+- **Caves Lava Bubbles Below Fog & 6-Tile Proximity Audio (`Source/engine/render/ground_fog.cpp`):**
+  - Moved `DrawCavesLavaBubblesTile()` before the ground fog compositor in `DrawGroundFogTileBase()` so lava bubbles render underneath the mist, and gated `SyncLavaBubbleAudio()` (`LS_LAVABUBBLES`) to `MaxHearRadius = 6` tiles with `dLight[x][y] < LightsMax` (visible within light radius).
+- **Tristram Snow & AshStorm Visibility (+35% Density & 2.1s Ground Linger, `Source/engine/render/weather.cpp`):**
+  - Increased `MaxRainDrops = 720` (`LightSnowAshDropCount = 320`, `HeavySnowAshDropCount = 720`), placed `82%` of Snow/AshStorm particles in visible air layers `1` and `2` (unoccluded by `gBgRainMask`), and boosted ground settling snowflakes to `4` slots per tile (`460‰` Heavy / `220‰` Light) with `2100 ms` linger duration.
+- **Static `libwinpthread` Single-Executable Packaging:**
+  - Removed dynamic `libwinpthread.dll.a` import stubs from the MinGW-w64 sysroot so `dx-eternity.exe` links `libwinpthread.a` statically and never requires `libwinpthread-1.dll` at launch.
+

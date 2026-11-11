@@ -2475,7 +2475,8 @@ bool IsItemAvailable(int i)
 		return false;
 	}
 
-	return (
+	return IsAnyOf(i, IDI_SORCERER_DIABLO, IDI_BARBARIAN)
+	    || (
 	           i != IDI_MAPOFDOOM                   // Cathedral Map
 	           && i != IDI_LGTFORGE                 // Bovine Plate
 	           && (i < IDI_OIL || i > IDI_GREYSUIT) // Hellfire exclusive items
