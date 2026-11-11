@@ -815,6 +815,9 @@ void DrawDungeon(const Surface &out, Point tilePosition, Point targetBufferPosit
 	}
 	DrawMissile(out, tilePosition, targetBufferPosition, false);
 	DrawObject(out, tilePosition, targetBufferPosition, false);
+	if (leveltype == DTYPE_CATHEDRAL && dPiece[tilePosition.x][tilePosition.y] == 269) {
+		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
+	}
 	DrawItem(out, tilePosition, targetBufferPosition, false);
 
 	if (leveltype != DTYPE_TOWN) {

@@ -12,8 +12,14 @@ node_modules/
 package.json
 package-lock.json
 bun.lock
+bun.lockb
+yarn.lock
+pnpm-lock.yaml
 public/
 .env*
+.npm/
+.cache/
+/*.png
 
 # Note: Keep misc/ commented out while downloading misc/dx-eternity.exe from AI Studio's File Explorer
 # (uncomment misc/ right before pushing to GitHub if you don't want the .exe in the repo)

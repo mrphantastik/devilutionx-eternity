@@ -32,9 +32,11 @@ namespace devilution {
 
 namespace {
 
-constexpr size_t MaxRainDrops = 448;
+constexpr size_t MaxRainDrops = 576;
 constexpr size_t LightRainDropCount = 160;
 constexpr size_t HeavyRainDropCount = 420;
+constexpr size_t LightSnowAshDropCount = 216; // +35% intensity for Light Snow & Light AshStorm
+constexpr size_t HeavySnowAshDropCount = 567; // +35% intensity for Heavy Snow & Heavy AshStorm
 
 constexpr size_t MaxSteamFogBanks = 14;
 constexpr size_t LightRainFogBankCount = 9;
@@ -125,6 +127,14 @@ int gBgRainMaskW = 0;
 int gBgRainMaskH = 0;
 int gBgRainBlockCols = 0;
 int gBgRainBlockRows = 0;
+
+inline size_t GetActiveWeatherDropCount()
+{
+	const bool isSnowOrAsh = (gTownWeatherKind == TownWeatherKind::Snow || gTownWeatherKind == TownWeatherKind::AshStorm);
+	const float lightCount = static_cast<float>(isSnowOrAsh ? LightSnowAshDropCount : LightRainDropCount);
+	const float heavyCount = static_cast<float>(isSnowOrAsh ? HeavySnowAshDropCount : HeavyRainDropCount);
+	return std::min<size_t>(MaxRainDrops, static_cast<size_t>(lightCount + (heavyCount - lightCount) * gHeavyBlend));
+}
 
 inline float GetLayerBaseSlant(uint8_t layer, float heavyBlend)
 {
@@ -596,12 +606,12 @@ void DrawSingleSettlingSnowFlake(const Surface &out, Point center, uint8_t stage
 	switch (stage) {
 	case 0:
 	case 1:
+	case 2:
 		PlotBlended50(out, center.x, center.y, brightCol);
 		PlotBlended25(out, center.x - 1, center.y, softCol);
 		PlotBlended25(out, center.x + 1, center.y, softCol);
 		PlotBlended19(out, center.x, center.y - 1, softCol);
 		break;
-	case 2:
 	case 3:
 		PlotBlended37(out, center.x, center.y, brightCol);
 		PlotBlended19(out, center.x - 1, center.y, softCol);
@@ -778,7 +788,6 @@ void OnWeatherNewGame()
 {
 	ResetWeatherState();
 	StopSFX(LS_LAVABUBBLES);
-	StopSFX(LS_INSECTBUZZ);
 	gHasGameRainRoll = false;
 	gWeatherInitialized = false;
 	gInDungeon = false;
@@ -815,7 +824,6 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 	} else {
 		// Returning to Tristram: only allow intensity (Light vs Heavy) to change if player spent >= 1 minute in a dungeon
 		StopSFX(LS_LAVABUBBLES);
-		StopSFX(LS_INSECTBUZZ);
 		if (gInDungeon) {
 			gAccumulatedDungeonMs += (nowTick - gDungeonEnterTick);
 			gInDungeon = false;
@@ -833,7 +841,7 @@ void OnWeatherLevelLoad(bool firstflag, dungeon_type levelType)
 void ResetWeatherState()
 {
 	// NOTE: UpdateWeatherState() calls ResetWeatherState() on EVERY FRAME when in a dungeon (leveltype != DTYPE_TOWN)!
-	// Never stop dungeon loops (LS_LAVABUBBLES / LS_INSECTBUZZ) here, or they will be killed every frame!
+	// Never stop dungeon loops (LS_LAVABUBBLES) here, or they will be killed every frame!
 	RestoreNormalTownPalette();
 	StopAllTownWeatherLoops();
 	StopSFX(LS_THUNDERA);
@@ -1045,9 +1053,7 @@ void UpdateWeatherState(const Surface &out, Point startTilePosition, Displacemen
 	const float maxX = static_cast<float>(viewW + marginX);
 	const float spanX = maxX - minX;
 
-	const size_t activeDropCount = static_cast<size_t>(
-	    static_cast<float>(LightRainDropCount)
-	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
+	const size_t activeDropCount = GetActiveWeatherDropCount();
 
 	for (size_t i = 0; i < activeDropCount; ++i) {
 		RainDrop &drop = gRainDrops[i];
@@ -1106,18 +1112,23 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 	    static_cast<uint32_t>(tilePosition.x) * 73856093U
 	    ^ static_cast<uint32_t>(tilePosition.y) * 19349663U);
 
-	const uint32_t spawnChancePerMille = (gHeavyBlend >= 0.5F) ? 299U : 136U;
-	constexpr uint32_t CycleDurationMs = 320U;
-	constexpr uint32_t SplashAnimDurationMs = 260U;
+	const bool isSnowOrAsh = (gTownWeatherKind != TownWeatherKind::Rain);
+	const uint32_t spawnChancePerMille = isSnowOrAsh
+	    ? ((gHeavyBlend >= 0.5F) ? 404U : 184U) // +35% ground particle density for Snow & AshStorm
+	    : ((gHeavyBlend >= 0.5F) ? 299U : 136U);
+	// Snowflakes linger ~6.3x longer on the ground (1650 ms vs 260 ms splash) before melting away
+	const uint32_t cycleDurationMs = isSnowOrAsh ? 1900U : 320U;
+	const uint32_t animDurationMs = isSnowOrAsh ? 1650U : 260U;
+	const uint32_t slotCount = isSnowOrAsh ? 3U : 2U;
 
-	for (uint32_t slot = 0; slot < 2; ++slot) {
+	for (uint32_t slot = 0; slot < slotCount; ++slot) {
 		const uint32_t slotSeed = FastHash(tileSeed ^ (slot * 0x9e3779b9U));
-		const uint32_t phaseOffset = slotSeed % CycleDurationMs;
+		const uint32_t phaseOffset = slotSeed % cycleDurationMs;
 		const uint32_t shiftedTick = nowTick + phaseOffset;
-		const uint32_t epoch = shiftedTick / CycleDurationMs;
-		const uint32_t localMs = shiftedTick % CycleDurationMs;
+		const uint32_t epoch = shiftedTick / cycleDurationMs;
+		const uint32_t localMs = shiftedTick % cycleDurationMs;
 
-		if (localMs >= SplashAnimDurationMs)
+		if (localMs >= animDurationMs)
 			continue;
 
 		const uint32_t epochHash = FastHash(slotSeed ^ (epoch * 0x85ebca6bU));
@@ -1127,9 +1138,9 @@ void DrawWeatherGroundTile(const Surface &out, Point tilePosition, Point targetB
 		const int subX = static_cast<int>((epochHash >> 10) % 33U) - 16;
 		const int subY = static_cast<int>((epochHash >> 16) % 15U) - 7;
 		const uint8_t variant = static_cast<uint8_t>((epochHash >> 22) & 7U);
-		const uint8_t stage = static_cast<uint8_t>(std::min<uint32_t>(4U, (localMs * 5U) / SplashAnimDurationMs));
+		const uint8_t stage = static_cast<uint8_t>(std::min<uint32_t>(4U, (localMs * 5U) / animDurationMs));
 
-		if (gTownWeatherKind != TownWeatherKind::Rain) {
+		if (isSnowOrAsh) {
 			DrawSingleSettlingSnowFlake(out, Point { tileCenterX + subX, tileCenterY + subY }, stage, variant);
 		} else {
 			DrawSinglePuddleSplash(out, Point { tileCenterX + subX, tileCenterY + subY }, stage, variant & 1U);
@@ -1225,9 +1236,7 @@ void DrawWeatherBackground(const Surface &out, Point /*startTilePosition*/, Disp
 		std::fill(gBgRainBlockGrid.begin(), gBgRainBlockGrid.end(), 0);
 	}
 
-	const size_t activeDropCount = static_cast<size_t>(
-	    static_cast<float>(LightRainDropCount)
-	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
+	const size_t activeDropCount = GetActiveWeatherDropCount();
 
 	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
 	const bool isSnow = (gTownWeatherKind == TownWeatherKind::Snow);
@@ -1312,9 +1321,7 @@ void DrawWeatherAir(const Surface &out, Point startTilePosition, Displacement of
 		}
 	}
 
-	const size_t activeDropCount = static_cast<size_t>(
-	    static_cast<float>(LightRainDropCount)
-	    + static_cast<float>(HeavyRainDropCount - LightRainDropCount) * gHeavyBlend);
+	const size_t activeDropCount = GetActiveWeatherDropCount();
 
 	const uint32_t nowTick = gWeatherSimTick != 0 ? gWeatherSimTick : SDL_GetTicks();
 	const bool isSnow = (gTownWeatherKind == TownWeatherKind::Snow);

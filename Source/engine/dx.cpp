@@ -10,7 +10,6 @@
 
 #include "controls/plrctrls.h"
 #include "engine.h"
-#include "engine/render/gbuffer.h"
 #include "options.h"
 #include "utils/display.h"
 #include "utils/log.hpp"
@@ -109,7 +108,6 @@ void dx_cleanup()
 		SDL_HideWindow(ghMainWnd);
 #endif
 
-	FreeGBuffer();
 	PalSurface = nullptr;
 	PinnedPalSurface = nullptr;
 	Palette = nullptr;
@@ -228,7 +226,21 @@ void RenderPresent()
 
 #ifndef USE_SDL1
 	if (renderer != nullptr) {
-		GBufferApplyLightingPass(surface, renderer, texture.get());
+		if (SDL_UpdateTexture(texture.get(), nullptr, surface->pixels, surface->pitch) <= -1) { // pitch is 2560
+			ErrSdl();
+		}
+
+		// Clear buffer to avoid artifacts in case the window was resized
+		if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255) <= -1) { // TODO only do this if window was resized
+			ErrSdl();
+		}
+
+		if (SDL_RenderClear(renderer) <= -1) {
+			ErrSdl();
+		}
+		if (SDL_RenderCopy(renderer, texture.get(), nullptr, nullptr) <= -1) {
+			ErrSdl();
+		}
 		if (ControlMode == ControlTypes::VirtualGamepad) {
 			RenderVirtualGamepad(renderer);
 		}

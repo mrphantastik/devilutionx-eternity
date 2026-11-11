@@ -157,8 +157,6 @@ TSFX sgSFX[] = {
 /*LS_THUNDERA*/    { sfx_MISC,                  "sfx\\misc\\thundera.wav",       nullptr },
 /*LS_THUNDERB*/    { sfx_MISC,                  "sfx\\misc\\thunderb.wav",       nullptr },
 /*LS_LAVABUBBLES*/ { sfx_MISC,                  "sfx\\misc\\LavaBubbles.wav",    nullptr },
-/*LS_INSECTBUZZ*/  { sfx_MISC,                  "sfx\\misc\\InsectBuzz.wav",     nullptr },
-/*LS_INSECTDISPERSE*/ { sfx_MISC,               "sfx\\misc\\InsectBuzzDisperse.wav", nullptr },
 /*LS_SNOWLIGHT*/   { sfx_MISC,                  "sfx\\misc\\SnowLight.wav",      nullptr },
 /*LS_SNOWHEAVY*/   { sfx_MISC,                  "sfx\\misc\\SnowHeavy.wav",      nullptr },
 /*LS_ASHSTORMLIGHT*/ { sfx_MISC,                "sfx\\misc\\AshStormLight.wav",  nullptr },
@@ -1247,7 +1245,6 @@ void sound_update()
 
 	if (!gbRunGame || !gbSoundOn) {
 		StopSFX(LS_LAVABUBBLES);
-		StopSFX(LS_INSECTBUZZ);
 	}
 
 	StreamUpdate();
@@ -1315,7 +1312,6 @@ void effects_play_sound(_sfx_id id)
 		StopSFX(LS_THUNDERA);
 		StopSFX(LS_THUNDERB);
 		StopSFX(LS_LAVABUBBLES);
-		StopSFX(LS_INSECTBUZZ);
 	}
 
 	TSFX &sfx = sgSFX[id];
