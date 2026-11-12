@@ -69,7 +69,7 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 - **Superior Items:** Torment-exclusive, rolling 30% higher stats than magic items.
 
 
-## Other Gameplay & Polish Changes
+### Other Gameplay & Polish Changes
 
 - Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
 - Silences the repetitive Defiler monologue pop-ups upon entering the Hive.
