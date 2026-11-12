@@ -64,6 +64,11 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 ---
 
+### Torment Difficulty & Superior Items
+- **Torment Difficulty:** Unlocked after defeating Diablo on Hell difficulty.
+- **Superior Items:** Torment-exclusive, rolling 30% higher stats than magic items.
+
+
 ## Other Gameplay & Polish Changes
 
 - Restores randomized walking sound effects originally commented out in the 1996 Blizzard North source code.
@@ -75,5 +80,4 @@ Slaying Diablo on **Hell difficulty** yields an independent **2% (1-in-50) drop 
 
 ## Roadmap / To-Do
 
-- [ ] **Torment Difficulty:** An endgame difficulty tier scaled beyond Hell.
 - [ ] **Cut Content Restoration:** Restoring select unreleased quests.
