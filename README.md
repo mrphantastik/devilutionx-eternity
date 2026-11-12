@@ -29,8 +29,12 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 
 ---
 
+Tristram Snowfall: Falling snow layer across town.
+
+Ash Storm: Drifting ash particles
+
 ### Dynamic Weather & Environmental Atmosphere (WiP)
-- **Tristram Rainfall:** Ambient rainfall layer across town.
+- **Tristram**: Ambient rain, falling snow and drifting ash particles across town.
 - **Interactive Ground Fog**: Volumetric mist that reacts to  movement.
 
 <p align="center"><img src="assets/ss-twn-rain.png" width="24%" alt="Tristram Rain"></p>
