@@ -588,7 +588,7 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 			}
 		}
 		DrawWeatherGroundTile(out, tilePosition, targetBufferPosition);
-		DrawGroundFogTileBase(out, tilePosition, targetBufferPosition, LightTableIndex);
+		DrawCavesLavaBubblesTile(out, tilePosition, targetBufferPosition, LightTableIndex);
 		targetBufferPosition.y -= TILE_HEIGHT;
 	}
 
@@ -801,24 +801,36 @@ void DrawDungeon(const Surface &out, Point tilePosition, Point targetBufferPosit
 	DrawObject(out, tilePosition, targetBufferPosition, true);
 	DrawItem(out, tilePosition, targetBufferPosition, true);
 
+	const bool hasStandingEntity = (dPlayer[tilePosition.x][tilePosition.y] != 0
+	    || dMonster[tilePosition.x][tilePosition.y] != 0
+	    || dObject[tilePosition.x][tilePosition.y] != 0);
+
+	if (!hasStandingEntity) {
+		DrawGroundFogTileSpan(out, tilePosition, targetBufferPosition, LightTableIndex, 1, 31);
+	} else {
+		// Draw back (North) portion of the raised fog behind the entity's knees/thighs
+		DrawGroundFogTileSpan(out, tilePosition, targetBufferPosition, LightTableIndex, 1, 10);
+	}
+
 	if (TileContainsDeadPlayer(tilePosition)) {
 		DrawDeadPlayer(out, tilePosition, targetBufferPosition);
 	}
 	int8_t playerId = dPlayer[tilePosition.x][tilePosition.y];
 	if (static_cast<size_t>(playerId - 1) < Players.size()) {
 		DrawPlayerHelper(out, Players[playerId - 1], tilePosition, targetBufferPosition);
-		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
 	}
 	if (dMonster[tilePosition.x][tilePosition.y] != 0) {
 		DrawMonsterHelper(out, tilePosition, targetBufferPosition);
-		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
 	}
 	DrawMissile(out, tilePosition, targetBufferPosition, false);
 	DrawObject(out, tilePosition, targetBufferPosition, false);
-	if (leveltype == DTYPE_CATHEDRAL && dPiece[tilePosition.x][tilePosition.y] == 269) {
-		DrawGroundFogEntitySubmersion(out, tilePosition, targetBufferPosition, LightTableIndex);
-	}
 	DrawItem(out, tilePosition, targetBufferPosition, false);
+
+	if (hasStandingEntity) {
+		// Draw front (South) portion of the raised fog (dy = 11..31, hovering at lower-calf height)
+		// in front of the player's lower calves, monster feet/lower legs, and barrel bases!
+		DrawGroundFogTileSpan(out, tilePosition, targetBufferPosition, LightTableIndex, 11, 31);
+	}
 
 	if (leveltype != DTYPE_TOWN) {
 		char bArch = dSpecial[tilePosition.x][tilePosition.y];

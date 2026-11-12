@@ -302,85 +302,11 @@ void ApplyCavesLavaVariant(uint32_t hash)
 	}
 }
 
-void ApplyProceduralPaletteShift(uint32_t hash)
+void ApplyLevelPaletteVariation(uint32_t hash)
 {
-	const float hueShiftPrimary = 35.0F + static_cast<float>(hash % 290U);
-	const float hueShiftSecondary = std::fmod(hueShiftPrimary + 115.0F, 360.0F);
-	const float satScale = 0.85F + static_cast<float>((hash >> 9) % 35U) * 0.01F; // 0.85 .. 1.19
-
 	if (leveltype == DTYPE_CAVES) {
 		ApplyCavesLavaVariant(hash);
-	}
-
-	const int startIdx = (leveltype == DTYPE_CAVES) ? 32 : 1;
-	for (int i = startIdx; i < 128; i++) {
-		float r = orig_palette[i].r / 255.0F;
-		float g = orig_palette[i].g / 255.0F;
-		float b = orig_palette[i].b / 255.0F;
-
-		float cmax = std::max({ r, g, b });
-		float cmin = std::min({ r, g, b });
-		float delta = cmax - cmin;
-
-		float s = (cmax <= 0.0001F) ? 0.0F : (delta / cmax);
-		float v = cmax;
-
-		// Leave neutral greyscale stone/shadows untouched so the level never becomes 1 flat color
-		if (s < 0.10F || v <= 0.04F)
-			continue;
-
-		float h = 0.0F;
-		if (cmax == r)
-			h = 60.0F * std::fmod(((g - b) / delta), 6.0F);
-		else if (cmax == g)
-			h = 60.0F * (((b - r) / delta) + 2.0F);
-		else
-			h = 60.0F * (((r - g) / delta) + 4.0F);
-		if (h < 0.0F)
-			h += 360.0F;
-
-		const float shift = (i < 32 || (i >= 64 && i < 96)) ? hueShiftPrimary : hueShiftSecondary;
-		h = std::fmod(h + shift, 360.0F);
-		s = clamp(s * satScale, 0.0F, 1.0F);
-
-		float c = v * s;
-		float x = c * (1.0F - std::fabs(std::fmod(h / 60.0F, 2.0F) - 1.0F));
-		float m = v - c;
-
-		float rp = 0.0F;
-		float gp = 0.0F;
-		float bp = 0.0F;
-		if (h < 60.0F) {
-			rp = c;
-			gp = x;
-		} else if (h < 120.0F) {
-			rp = x;
-			gp = c;
-		} else if (h < 180.0F) {
-			gp = c;
-			bp = x;
-		} else if (h < 240.0F) {
-			gp = x;
-			bp = c;
-		} else if (h < 300.0F) {
-			rp = x;
-			bp = c;
-		} else {
-			rp = c;
-			bp = x;
-		}
-
-		orig_palette[i].r = static_cast<Uint8>(clamp(static_cast<int>((rp + m) * 255.0F + 0.5F), 0, 255));
-		orig_palette[i].g = static_cast<Uint8>(clamp(static_cast<int>((gp + m) * 255.0F + 0.5F), 0, 255));
-		orig_palette[i].b = static_cast<Uint8>(clamp(static_cast<int>((bp + m) * 255.0F + 0.5F), 0, 255));
-	}
-
-	if (leveltype == DTYPE_CAVES || leveltype == DTYPE_CRYPT) {
 		GenerateBlendedLookupTable(orig_palette, 1, 31);
-	} else if (leveltype == DTYPE_NEST) {
-		GenerateBlendedLookupTable(orig_palette, 1, 15);
-	} else {
-		GenerateBlendedLookupTable(orig_palette, -1, -1);
 	}
 }
 
