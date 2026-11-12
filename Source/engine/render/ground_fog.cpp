@@ -75,35 +75,15 @@ std::array<std::array<uint8_t, 256>, 256> gCachedCanopyFog;
 std::array<std::array<int8_t, 256>, 256> gCachedCanopySlope;
 
 /**
- * Direct RGB-interpolated 6-tier software alpha LUT:
- * Avoids recursive paletteTransparencyLookup chaining (which snaps dark pixels
- * to 0 Pure Black and gets stuck in quantization fixed-points, causing black blotches
- * and contour rings).
- * Tiers 0..5 correspond to:
- *   0: ~12.5% (2/16 fg + 14/16 bg)
- *   1: ~25.0% (4/16 fg + 12/16 bg)
- *   2: ~37.5% (6/16 fg + 10/16 bg)
- *   3: ~50.0% (8/16 fg +  8/16 bg)
- *   4: ~62.5% (10/16 fg + 6/16 bg)
- *   5: ~75.0% (12/16 fg + 4/16 bg)
- */
-uint8_t gFogAlphaLut[6][256][256];
-dungeon_type gCachedFogLutDtype = DTYPE_NONE;
-int gCachedFogLutLevel = -1;
-uint8_t gCachedCrestByLight[15];
-uint8_t gCachedCoreByLight[15];
-uint8_t gCachedTroughByLight[15];
-
-/**
- * 4x4 Ordered Bayer Dither Matrix (-12..+12):
- * Smoothly feathers transitions across the 6 alpha blend tiers so contour edges
- * never exhibit rectilinear staircase blocks.
+ * Ordered 4x4 Bayer Dither Matrix (-15..+15):
+ * Matches Ground Fog v6 (nice-fog2.png) to smoothly feather transitions across
+ * the paletteTransparencyLookup blend tiers without contour rings or blockiness.
  */
 constexpr int8_t Bayer4x4[4][4] = {
-	{ -12,   2,  -8,   6 },
-	{   8,  -6,  12,  -2 },
-	{  -6,   6, -10,   4 },
-	{  10,  -4,   6,  -8 },
+	{ -15,   5, -11,   9 },
+	{  13,  -7,  15,  -3 },
+	{  -9,  11, -13,   7 },
+	{  15,  -5,   9, -11 },
 };
 
 std::array<std::array<FogHalfCell, HalfGridH>, HalfGridW> gFogHalfGrid;
@@ -112,20 +92,19 @@ std::array<std::array<uint16_t, MAXDUNY + 1>, MAXDUNX + 1> gFogVertexWallFade;
 
 LevelFogConfig GetLevelFogConfig()
 {
-	// Uses pure neutral PAL16_GRAY (240..254) for neutral mist/smoke across dungeons
-	// instead of PAL16_BEIGE (192..207), which is a salmon/reddish-tan ramp in Diablo 1's palette.
-	// Cutoffs raised to provide ~30% more open floor clearing space between drifting banks.
+	// Matches Ground Fog v6 (nice-fog2.png): pure neutral PAL16_GRAY (240..254) smoky shades
+	// with uvScale = 44 for Layer 2 cloud puffs (and uvScale1 = 64 for Layer 1 ground mist).
 	switch (leveltype) {
 	case DTYPE_CATHEDRAL:
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/228,
-			/*intensityCutoff=*/92,
+			/*maxDensity=*/232,
+			/*intensityCutoff=*/78,
 			/*uvScale=*/44,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
 			/*driftDivX=*/520,
@@ -135,12 +114,12 @@ LevelFogConfig GetLevelFogConfig()
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/226,
-			/*intensityCutoff=*/92,
+			/*maxDensity=*/230,
+			/*intensityCutoff=*/78,
 			/*uvScale=*/44,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
 			/*driftDivX=*/560,
@@ -150,12 +129,12 @@ LevelFogConfig GetLevelFogConfig()
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/228,
-			/*intensityCutoff=*/90,
+			/*maxDensity=*/234,
+			/*intensityCutoff=*/74,
 			/*uvScale=*/46,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
 			/*driftDivX=*/440,
@@ -165,10 +144,10 @@ LevelFogConfig GetLevelFogConfig()
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/234,
-			/*intensityCutoff=*/90,
+			/*maxDensity=*/238,
+			/*intensityCutoff=*/74,
 			/*uvScale=*/44,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
 			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
 			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
@@ -180,12 +159,12 @@ LevelFogConfig GetLevelFogConfig()
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/228,
-			/*intensityCutoff=*/92,
+			/*maxDensity=*/232,
+			/*intensityCutoff=*/78,
 			/*uvScale=*/48,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/true,
 			/*driftDivX=*/480,
@@ -195,12 +174,12 @@ LevelFogConfig GetLevelFogConfig()
 		return {
 			/*enabled=*/true,
 			/*spawnChancePercent=*/100,
-			/*maxDensity=*/236,
-			/*intensityCutoff=*/88,
+			/*maxDensity=*/240,
+			/*intensityCutoff=*/72,
 			/*uvScale=*/42,
-			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 2),
-			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 5),
-			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 9),
+			/*crestShade=*/static_cast<uint8_t>(PAL16_GRAY + 3),
+			/*coreShade=*/static_cast<uint8_t>(PAL16_GRAY + 6),
+			/*troughShade=*/static_cast<uint8_t>(PAL16_GRAY + 10),
 			/*allowHeavyBlend=*/true,
 			/*hasPulse=*/false,
 			/*driftDivX=*/600,
@@ -213,8 +192,7 @@ LevelFogConfig GetLevelFogConfig()
 
 /**
  * Shades a fog palette index smoothly by dungeon lightIndex (0 = bright, 14 = dark)
- * WITHOUT allowing PAL16_GRAY (240..254) to snap to 0 (Pure Black) at lightIndex >= 6,
- * which previously caused Hell and Cathedral fog troughs/drop-shadows to collapse into solid black!
+ * WITHOUT allowing PAL16_GRAY (240..254) to snap to 0 (Pure Black) at lightIndex >= 6.
  */
 inline uint8_t ShadeFogColor(uint8_t baseColor, int lightIndex)
 {
@@ -228,98 +206,63 @@ inline uint8_t ShadeFogColor(uint8_t baseColor, int lightIndex)
 	return (lit == 0) ? static_cast<uint8_t>(PAL16_GRAY + 13) : lit;
 }
 
-/**
- * Rebuilds the direct RGB 6-tier alpha LUT once per level load / static palette change
- * (never on 50ms color-cycling ticks).
- */
-void EnsureFogAlphaLutUpdated()
+inline uint8_t Blend50(uint8_t a, uint8_t b)
 {
-	static uint32_t sLastStaticPalHash = 0;
-	if (gCachedFogLutDtype == leveltype && gCachedFogLutLevel == currlevel && sLastStaticPalHash != 0)
-		return;
+	return paletteTransparencyLookup[a][b];
+}
 
-	uint32_t staticHash = 2166136261U;
-	for (int i = 32; i < 255; i += 3) {
-		staticHash = (staticHash ^ orig_palette[i].r) * 16777619U;
-		staticHash = (staticHash ^ orig_palette[i].g) * 16777619U;
-		staticHash = (staticHash ^ orig_palette[i].b) * 16777619U;
-	}
-	gCachedFogLutDtype = leveltype;
-	gCachedFogLutLevel = currlevel;
+inline uint8_t Blend25(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend50(a, b), b);
+}
 
-	const LevelFogConfig cfg = GetLevelFogConfig();
-	for (int l = 0; l < 15; l++) {
-		gCachedCrestByLight[l] = ShadeFogColor(cfg.crestShade, l);
-		gCachedCoreByLight[l] = ShadeFogColor(cfg.coreShade, l);
-		gCachedTroughByLight[l] = ShadeFogColor(cfg.troughShade, l);
-	}
+inline uint8_t Blend12(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend25(a, b), b);
+}
 
-	if (staticHash == sLastStaticPalHash)
-		return;
-	sLastStaticPalHash = staticHash;
+inline uint8_t Blend6(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend12(a, b), b);
+}
 
-	// Search static non-cycling indices (32..254) so fog never maps to index 0 (Pure Black),
-	// index 255 (Pure White), or indices 1..31 (animated lava/water cycle).
-	for (int bg = 0; bg < 256; bg++) {
-		const int bgR = orig_palette[bg].r;
-		const int bgG = orig_palette[bg].g;
-		const int bgB = orig_palette[bg].b;
+inline uint8_t Blend37(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend50(a, b), Blend25(a, b));
+}
 
-		for (int fg = 0; fg < 256; fg++) {
-			if (bg == 0) {
-				for (int t = 0; t < 6; t++)
-					gFogAlphaLut[t][bg][fg] = 0;
-				continue;
-			}
-			const int fgR = orig_palette[fg].r;
-			const int fgG = orig_palette[fg].g;
-			const int fgB = orig_palette[fg].b;
+inline uint8_t Blend31(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend37(a, b), Blend25(a, b));
+}
 
-			for (int t = 0; t < 6; t++) {
-				const int w = (t + 1) * 2; // 2, 4, 6, 8, 10, 12 out of 16 (12.5% .. 75.0%)
-				const int targetR = (bgR * (16 - w) + fgR * w + 8) >> 4;
-				const int targetG = (bgG * (16 - w) + fgG * w + 8) >> 4;
-				const int targetB = (bgB * (16 - w) + fgB * w + 8) >> 4;
-
-				uint8_t bestIdx = static_cast<uint8_t>(bg);
-				int bestDist = 0x7FFFFFFF;
-				for (int i = 32; i < 255; i++) {
-					const int dr = static_cast<int>(orig_palette[i].r) - targetR;
-					const int dg = static_cast<int>(orig_palette[i].g) - targetG;
-					const int db = static_cast<int>(orig_palette[i].b) - targetB;
-					const int dist = dr * dr * 3 + dg * dg * 4 + db * db * 2;
-					if (dist < bestDist) {
-						bestDist = dist;
-						bestIdx = static_cast<uint8_t>(i);
-						if (dist == 0)
-							break;
-					}
-				}
-				gFogAlphaLut[t][bg][fg] = bestIdx;
-			}
-		}
-	}
+inline uint8_t Blend19(uint8_t a, uint8_t b)
+{
+	return Blend50(Blend25(a, b), Blend12(a, b));
 }
 
 inline uint8_t ApplySoftFogBlend(uint8_t shade, uint8_t dst, int alpha, bool allowHeavy)
 {
-	if (alpha > 188) {
-		return gFogAlphaLut[allowHeavy ? 5 : 4][dst][shade];
+	if (alpha > 195) {
+		return allowHeavy ? Blend50(shade, dst) : Blend37(shade, dst);
 	}
-	if (alpha > 146) {
-		return gFogAlphaLut[4][dst][shade];
+	if (alpha > 152) {
+		return Blend37(shade, dst);
 	}
-	if (alpha > 108) {
-		return gFogAlphaLut[3][dst][shade];
+	if (alpha > 114) {
+		return Blend31(shade, dst);
 	}
-	if (alpha > 72) {
-		return gFogAlphaLut[2][dst][shade];
+	if (alpha > 80) {
+		return Blend25(shade, dst);
 	}
-	if (alpha > 38) {
-		return gFogAlphaLut[1][dst][shade];
+	if (alpha > 48) {
+		return Blend19(shade, dst);
 	}
-	if (alpha > 12) {
-		return gFogAlphaLut[0][dst][shade];
+	if (alpha > 24) {
+		return Blend12(shade, dst);
+	}
+	if (alpha > 8) {
+		return Blend6(shade, dst);
 	}
 	return dst;
 }
@@ -375,54 +318,47 @@ void EnsureFogNoiseInitialized()
 		for (int x = 0; x < 256; x++) {
 			const float fx = static_cast<float>(x);
 
-			const float wx = ValueNoiseTileableFloat(fx, fy, 2, 901U) * 0.65F
-			    + ValueNoiseTileableFloat(fx, fy, 4, 902U) * 0.35F;
-			const float wy = ValueNoiseTileableFloat(fx, fy, 2, 903U) * 0.65F
-			    + ValueNoiseTileableFloat(fx, fy, 4, 904U) * 0.35F;
+			const float wx = ValueNoiseTileableFloat(fx, fy, 4, 901U);
+			const float wy = ValueNoiseTileableFloat(fx, fy, 4, 902U);
 			gFogWarpLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(wx * 255.0F + 0.5F), 0, 255));
 
-			// Large-scale regional clearing mask (sampled at 512x512 world-pixel scale in DrawGroundFogTileSpan)
-			// Breaks any 256x256 grid repetition and carves broad organic clearings (+30% more open floor space)!
-			const float mx = fx + (wx - 0.5F) * 64.0F;
-			const float my = fy + (wy - 0.5F) * 64.0F;
-			const float m1 = ValueNoiseTileableFloat(mx, my, 1, 771U);
-			const float m2 = ValueNoiseTileableFloat(mx, my, 2, 772U);
-			const float m3 = ValueNoiseTileableFloat(mx, my, 3, 773U);
-			const float macroRaw = m1 * 0.52F + m2 * 0.33F + m3 * 0.15F;
-			const float macroNorm = std::clamp((macroRaw - 0.34F) * 2.15F, 0.0F, 1.0F);
-			const float macroSmooth = macroNorm * macroNorm * (3.0F - 2.0F * macroNorm);
-			gFogMacroClearingLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(macroSmooth * 255.0F + 0.5F), 0, 255));
+			const float mx = fx + (wx - 0.5F) * 48.0F;
+			const float my = fy + (wy - 0.5F) * 48.0F;
+			const float m1 = ValueNoiseTileableFloat(mx, my, 2, 771U);
+			const float m2 = ValueNoiseTileableFloat(mx, my, 4, 772U);
+			const float macroRaw = m1 * 0.60F + m2 * 0.40F;
+			const float macroNorm = std::clamp((macroRaw - 0.30F) * 2.0F, 0.0F, 1.0F);
+			gFogMacroClearingLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(macroNorm * 255.0F + 0.5F), 0, 255));
 
-			// 1. Layer 1 Noise (gFogNoiseLut): Broad, non-uniform, wispy ground-hugging mist banks
-			// Uses low base periods (1, 2, 4, 8) + strong domain warp so it never forms a 64x32 tile grid!
-			const float sx1 = fx + (wx - 0.5F) * 68.0F;
-			const float sy1 = fy * 1.35F + (wy - 0.5F) * 68.0F;
+			// 1. Layer 1 Noise (gFogNoiseLut): Ground Fog v6 (nice-fog2.png) smoky FBM + ridge filaments
+			const float sx1 = fx + (wx - 0.5F) * 44.0F;
+			const float sy1 = fy + (wy - 0.5F) * 44.0F;
 
-			const float n0 = ValueNoiseTileableFloat(sx1, sy1, 1, 101U);
-			const float n1 = ValueNoiseTileableFloat(sx1, sy1, 2, 202U);
-			const float n2 = ValueNoiseTileableFloat(sx1, sy1, 4, 303U);
-			const float n3 = ValueNoiseTileableFloat(sx1, sy1, 8, 404U);
+			const float n0 = ValueNoiseTileableFloat(sx1, sy1, 2, 101U);
+			const float n1 = ValueNoiseTileableFloat(sx1, sy1, 4, 202U);
+			const float n2 = ValueNoiseTileableFloat(sx1, sy1, 8, 303U);
+			const float n3 = ValueNoiseTileableFloat(sx1, sy1, 16, 404U);
 
-			const float fbm1 = n0 * 0.42F + n1 * 0.31F + n2 * 0.18F + n3 * 0.09F;
+			const float fbm1 = n0 * 0.38F + n1 * 0.32F + n2 * 0.20F + n3 * 0.10F;
 			const float ridge1 = 1.0F - std::fabs(n1 * 2.0F - 1.0F);
 			const float ridgeSmooth1 = ridge1 * ridge1 * (3.0F - 2.0F * ridge1);
-			const float raw1 = fbm1 * 0.76F + ridgeSmooth1 * 0.24F;
+			const float raw1 = fbm1 * 0.72F + ridgeSmooth1 * 0.28F;
 
-			const float norm1 = std::clamp((raw1 - 0.34F) * 2.05F, 0.0F, 1.0F);
+			const float norm1 = std::clamp((raw1 - 0.28F) * 1.85F, 0.0F, 1.0F);
 			const float mist1 = norm1 * norm1 * (3.0F - 2.0F * norm1);
 			gFogNoiseLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(mist1 * 255.0F + 0.5F), 0, 255));
 
-			// 2. Layer 2 Noise (gFogCanopyNoiseLut): Asymmetric, sculpted 3D cloud puff banks
-			const float sx2 = fx + (wy - 0.5F) * 62.0F;
-			const float sy2 = fy * 1.35F - (wx - 0.5F) * 62.0F;
+			// 2. Layer 2 Noise (gFogCanopyNoiseLut): Ground Fog v6 sculpted 3D cloud puff banks
+			const float sx2 = fx + (wy - 0.5F) * 48.0F;
+			const float sy2 = fy - (wx - 0.5F) * 48.0F;
 
-			const float c0 = ValueNoiseTileableFloat(sx2, sy2, 1, 505U);
-			const float c1 = ValueNoiseTileableFloat(sx2, sy2, 2, 606U);
-			const float c2 = ValueNoiseTileableFloat(sx2, sy2, 4, 707U);
-			const float c3 = ValueNoiseTileableFloat(sx2, sy2, 8, 808U);
+			const float c0 = ValueNoiseTileableFloat(sx2, sy2, 2, 505U);
+			const float c1 = ValueNoiseTileableFloat(sx2, sy2, 4, 606U);
+			const float c2 = ValueNoiseTileableFloat(sx2, sy2, 8, 707U);
+			const float c3 = ValueNoiseTileableFloat(sx2, sy2, 16, 808U);
 
-			const float fbm2 = c0 * 0.45F + c1 * 0.32F + c2 * 0.15F + c3 * 0.08F;
-			const float norm2 = std::clamp((fbm2 - 0.43F) * 2.45F, 0.0F, 1.0F);
+			const float fbm2 = c0 * 0.44F + c1 * 0.32F + c2 * 0.16F + c3 * 0.08F;
+			const float norm2 = std::clamp((fbm2 - 0.36F) * 2.15F, 0.0F, 1.0F);
 			const float puff2 = norm2 * norm2 * (3.0F - 2.0F * norm2);
 			gFogCanopyNoiseLut[y][x] = static_cast<uint8_t>(std::clamp(static_cast<int>(puff2 * 255.0F + 0.5F), 0, 255));
 		}
@@ -451,8 +387,9 @@ inline int SampleLutBilinear(const std::array<std::array<uint8_t, 256>, 256> &lu
 }
 
 /**
- * Updates the 1:1 screen-pixel world-locked fog sheets in 4 interleaved 64-row slices (4x less CPU per frame!).
- * Travel and internal swirl speeds are reduced by 30% for a calmer, atmospheric dungeon drift.
+ * Updates the world-locked fog sheets in 4 interleaved 64-row slices.
+ * Step 1: Travel and internal swirl speeds are reduced by 40% (0.60x velocity) while
+ * preserving the exact Ground Fog v6 (nice-fog2.png) visual look.
  */
 void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 {
@@ -464,22 +401,22 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 	gLastFogSheetDtype = leveltype;
 
 	const int32_t sTicks = static_cast<int32_t>(ticks);
-	// 30% slower travel speeds (divisors increased by ~1.43x)
-	const int driftX1 = (sTicks * 256) / ((cfg.driftDivX * 10) / 56);
-	const int driftY1 = (sTicks * 256) / ((cfg.driftDivY * 10) / 28);
+	// Step 1: 40% slower travel speeds (0.60x of Ground Fog v6 velocity)
+	const int driftX1 = (sTicks * 256) / ((cfg.driftDivX * 100) / 336);
+	const int driftY1 = (sTicks * 256) / ((cfg.driftDivY * 100) / 168);
 
-	// Layer 2 (Elevated 3D Cloud Puffs): 30% slower cross-wind drift
-	const int driftX2 = -((sTicks * 256) / ((cfg.driftDivX * 10) / 77));
-	const int driftY2 = (sTicks * 256) / ((cfg.driftDivY * 10) / 49);
+	// Layer 2 (Elevated 3D Cloud Puffs): 40% slower cross-wind drift (0.60x of Ground Fog v6 velocity)
+	const int driftX2 = -((sTicks * 256) / ((cfg.driftDivX * 100) / 462));
+	const int driftY2 = (sTicks * 256) / ((cfg.driftDivY * 100) / 294);
 
-	// 30% slower counter-rotating internal swirl velocities
-	const int warpDriftX1 = -(sTicks * 256) / 69;
-	const int warpDriftY1 = (sTicks * 256) / 89;
-	const int warpDriftX2 = (sTicks * 256) / 60;
-	const int warpDriftY2 = -(sTicks * 256) / 77;
+	// Step 1: 40% slower counter-rotating internal swirl velocities (divisors scaled by 1 / 0.60)
+	const int warpDriftX1 = -(sTicks * 256) / 115;
+	const int warpDriftY1 = (sTicks * 256) / 148;
+	const int warpDriftX2 = (sTicks * 256) / 100;
+	const int warpDriftY2 = -(sTicks * 256) / 128;
 
 	if (cfg.hasPulse) {
-		const int phase = (sTicks / 92) & 0xFF;
+		const int phase = (sTicks / 153) & 0xFF;
 		const int triWave = (phase < 128) ? phase : (255 - phase);
 		gCachedPulseOffset = (triWave >> 2) - 16;
 	} else {
@@ -525,11 +462,11 @@ void UpdateCachedFogSheets30Hz(uint32_t ticks, const LevelFogConfig &cfg)
 
 	// Update 3D NW->SE dome slope for the updated slice
 	for (int y = yStart; y < yEnd; y++) {
-		const int yNW = (y - 3) & 0xFF;
-		const int ySE = (y + 3) & 0xFF;
+		const int yNW = (y - 2) & 0xFF;
+		const int ySE = (y + 2) & 0xFF;
 		for (int x = 0; x < 256; x++) {
-			const int xNW = (x - 5) & 0xFF;
-			const int xSE = (x + 5) & 0xFF;
+			const int xNW = (x - 2) & 0xFF;
+			const int xSE = (x + 2) & 0xFF;
 			const int slope = (static_cast<int>(gCachedCanopyFog[y][x]) - static_cast<int>(gCachedCanopyFog[yNW][xNW]))
 			    + ((static_cast<int>(gCachedCanopyFog[yNW][xNW]) - static_cast<int>(gCachedCanopyFog[ySE][xSE])) >> 1);
 			gCachedCanopySlope[y][x] = static_cast<int8_t>(std::clamp(slope, -127, 127));
@@ -752,10 +689,7 @@ uint32_t NextBubbleRand()
 }
 
 /**
- * Updates live lava bubble indices AND syncs gFogAlphaLut[t][1..31][PAL16_GRAY..]
- * with the live rotated system_palette[1..31]!
- * Previously, gFogAlphaLut used un-rotated orig_palette[1..31], which caused lava bubbles
- * under ground fog to flash/flicker at 20 Hz as CycleColors(1, 31) rotated system_palette[1..31]!
+ * Updates live lava bubble indices from the rotated system_palette[1..31].
  */
 void EnsureLiveLavaBubbleShades()
 {
@@ -764,8 +698,6 @@ void EnsureLiveLavaBubbleShades()
 	if (gCachedLavaPaletteVersion == pal_surface_palette_version)
 		return;
 	gCachedLavaPaletteVersion = pal_surface_palette_version;
-
-	EnsureFogAlphaLutUpdated();
 
 	struct IdxLum {
 		uint8_t idx;
@@ -784,41 +716,6 @@ void EnsureLiveLavaBubbleShades()
 	gLavaBodyIdx = entries[15].idx;
 	gLavaRimIdx = entries[24].idx;
 	gLavaSpecIdx = entries[30].idx;
-
-	// Sync gFogAlphaLut for cycling lava indices (bg = 1..31) against PAL16_GRAY fog shades
-	// using the live system_palette[1..31] so fog over lava/bubbles NEVER flickers at 20 Hz!
-	for (int bg = 1; bg <= 31; bg++) {
-		const int bgR = system_palette[bg].r;
-		const int bgG = system_palette[bg].g;
-		const int bgB = system_palette[bg].b;
-
-		for (int fg = PAL16_GRAY; fg <= PAL16_GRAY + 15; fg++) {
-			const int fgR = orig_palette[fg].r;
-			const int fgG = orig_palette[fg].g;
-			const int fgB = orig_palette[fg].b;
-
-			for (int t = 0; t < 6; t++) {
-				const int w = (t + 1) * 2;
-				const int targetR = (bgR * (16 - w) + fgR * w + 8) >> 4;
-				const int targetG = (bgG * (16 - w) + fgG * w + 8) >> 4;
-				const int targetB = (bgB * (16 - w) + fgB * w + 8) >> 4;
-
-				uint8_t bestIdx = static_cast<uint8_t>(bg);
-				int bestDist = 0x7FFFFFFF;
-				for (int i = 32; i < 255; i++) {
-					const int dr = static_cast<int>(orig_palette[i].r) - targetR;
-					const int dg = static_cast<int>(orig_palette[i].g) - targetG;
-					const int db = static_cast<int>(orig_palette[i].b) - targetB;
-					const int dist = dr * dr * 3 + dg * dg * 4 + db * db * 2;
-					if (dist < bestDist) {
-						bestDist = dist;
-						bestIdx = static_cast<uint8_t>(i);
-					}
-				}
-				gFogAlphaLut[t][bg][fg] = bestIdx;
-			}
-		}
-	}
 }
 
 /**
@@ -1157,10 +1054,7 @@ void ResetGroundFogLevel()
 		}
 	}
 
-	// Precompute smooth wall-proximity fade at every shared tile-grid vertex (vx, vy):
-	// - Any vertex directly touching a solid wall/cliff tile (pass4 < 4) fades to 0 (no harsh line along walls!)
-	// - Vertices 1 tile away from a wall fade to 156 (~60%) for a soft 2-tile cushion
-	// - Open interior vertices get full 256 weight
+	// Precompute vertex wall-fade weights at every shared tile-grid vertex (vx, vy):
 	for (int vx = 0; vx <= MAXDUNX; vx++) {
 		for (int vy = 0; vy <= MAXDUNY; vy++) {
 			int pass4 = 0;
@@ -1172,22 +1066,14 @@ void ResetGroundFogLevel()
 						pass4++;
 				}
 			}
-			if (pass4 < 4) {
+			if (pass4 == 0) {
 				gFogVertexWallFade[vx][vy] = 0;
-				continue;
-			}
-
-			int pass16 = 0;
-			for (int ox = -2; ox <= 1; ox++) {
-				const int tx = std::clamp(vx + ox, 0, MAXDUNX - 1);
-				for (int oy = -2; oy <= 1; oy++) {
-					const int ty = std::clamp(vy + oy, 0, MAXDUNY - 1);
-					if (gFogTilePassable[tx][ty])
-						pass16++;
-				}
-			}
-			if (pass16 < 16) {
-				gFogVertexWallFade[vx][vy] = static_cast<uint16_t>(96 + pass16 * 10);
+			} else if (pass4 == 1) {
+				gFogVertexWallFade[vx][vy] = 148;
+			} else if (pass4 == 2) {
+				gFogVertexWallFade[vx][vy] = 192;
+			} else if (pass4 == 3) {
+				gFogVertexWallFade[vx][vy] = 228;
 			} else {
 				gFogVertexWallFade[vx][vy] = 256;
 			}
@@ -1332,7 +1218,6 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 		return;
 
 	EnsureFogNoiseInitialized();
-	EnsureFogAlphaLutUpdated();
 	if (leveltype == DTYPE_CAVES) {
 		EnsureLiveLavaBubbleShades();
 	}
@@ -1355,36 +1240,34 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 	if ((w00 | w10 | w01 | w11) <= 4)
 		return;
 
-	// Precompute shaded fog colors for all 15 light steps (0..14) so per-pixel vertex-interpolated
-	// lighting transitions smoothly across light rings without flat 64x32 diamond tile steps!
+	// Precompute shaded fog colors for all 15 light steps (0..14)
 	uint8_t crestByLight[15];
 	uint8_t coreByLight[15];
 	uint8_t troughByLight[15];
+	uint8_t lowerDomeByLight[15];
 	for (int l = 0; l < 15; l++) {
 		crestByLight[l] = ShadeFogColor(cfg.crestShade, l);
 		coreByLight[l] = ShadeFogColor(cfg.coreShade, l);
 		troughByLight[l] = ShadeFogColor(cfg.troughShade, l);
+		lowerDomeByLight[l] = Blend50(troughByLight[l], coreByLight[l]);
 	}
-	const uint8_t shadowShade = static_cast<uint8_t>(PAL16_GRAY + 14);
 
 	// Average swirl offset across the tile
-	const int swirlPxX = ((sx00 + sx10 + sx01 + sx11) >> 3);
-	const int swirlPxY = ((sy00 + sy10 + sy01 + sy11) >> 4);
+	const int swirlTexX = ((sx00 + sx10 + sx01 + sx11) >> 3);
+	const int swirlTexY = ((sy00 + sy10 + sy01 + sy11) >> 3);
 
-	// Exact world-locked screen pixel origin for tile (tx, ty) matching scrollrt.cpp:
-	//   tx++ -> (+32, +16), ty++ -> (-32, +16)
-	const int worldPxX = (tx - ty) * 32;
-	const int worldPxY = (tx + ty) * 16;
+	// Ground Fog v6 (nice-fog2.png) isometric floor UV scales:
+	//   Layer 1 (Low Ground Mist): uvScale1 = 64 (1:1 isometric texel resolution)
+	//   Layer 2 (3D Cloud Puffs):  uvScale2 = cfg.uvScale (44 -> ~1.45x larger billowing 3D cloud puffs)
+	constexpr int UvScale1 = 64;
+	const int uvScale2 = static_cast<int>(cfg.uvScale);
 
-	// Layer 1 (Low Ground Mist Carpet) & Layer 2 (Elevated 3D Cloud Puffs + Drop-Shadow)
 	const int floorCutoff = static_cast<int>(cfg.intensityCutoff) + gCachedPulseOffset;
-	const int canopyCutoff = 114 + gCachedPulseOffset;
+	const int canopyCutoff = static_cast<int>(cfg.intensityCutoff) + 24 + gCachedPulseOffset;
 	const int floorScaleRecip = (256 * 256) / std::max(64, 255 - floorCutoff);
 	const int canopyScaleRecip = (256 * 256) / std::max(64, 255 - canopyCutoff);
 
-	// Raise fog sheet by 5 pixels above the floor plane so it hovers at player lower-calf height!
-	constexpr int FogHoverRaisePx = 5;
-	const int topY = targetBufferPosition.y - 31 - FogHoverRaisePx;
+	const int topY = targetBufferPosition.y - 31;
 	const int leftX = targetBufferPosition.x;
 	const int clipW = out.w();
 	const int clipH = out.h();
@@ -1410,7 +1293,7 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 		const int spanLen = std::max(1, xEnd - xStart);
 		const int relY = dy - 16;
 
-		// Evaluate u256/v256 ONLY at the left and right endpoints of this scanline!
+		// Evaluate u256/v256 at the left and right endpoints of this scanline
 		const int relXLeft = xStart - 32;
 		const int uLeft = std::clamp((relY * 2 + relXLeft) * 4 + 128, 0, 256);
 		const int vLeft = std::clamp((relY * 2 - relXLeft) * 4 + 128, 0, 256);
@@ -1432,19 +1315,22 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 		int lFixed = lLeft << 8;
 		const int lStep = ((lRight - lLeft) << 8) / spanLen;
 
+		// Isometric tile-space UV coordinates (matching Ground Fog v6 / nice-fog2.png):
+		// Each dx++ step advances u256 by +4 and v256 by -4.
+		int u1Tex = (tx * UvScale1 + (uLeft >> 2) + swirlTexX) & 0xFF;
+		int v1Tex = (ty * UvScale1 + (vLeft >> 2) + swirlTexY) & 0xFF;
+
+		int u2Fixed = (((tx << 8) + uLeft) * uvScale2) + (swirlTexX << 7);
+		int v2Fixed = (((ty << 8) + vLeft) * uvScale2) + (swirlTexY << 7);
+		const int u2Step = 4 * uvScale2;
+		const int v2Step = -4 * uvScale2;
+
 		const int8_t *bayerRow = Bayer4x4[screenY & 3];
-		const int wy1 = (worldPxY + dy + swirlPxY) & 0xFF;
-		const int wy2 = (worldPxY + dy + (swirlPxY >> 1)) & 0xFF;
-		const int wyShadow = (wy2 - 6) & 0xFF;
-		const int wyMacro = ((worldPxY + dy) >> 1) & 0xFF;
-		const uint8_t *floorRow = gCachedFloorFog[wy1].data();
-		const uint8_t *canopyRow = gCachedCanopyFog[wy2].data();
-		const uint8_t *shadowRow = gCachedCanopyFog[wyShadow].data();
-		const int8_t *slopeRow = gCachedCanopySlope[wy2].data();
-		const uint8_t *macroRow = gFogMacroClearingLut[wyMacro].data();
 		uint8_t *dstRow = &out[{ 0, screenY }];
 
-		for (int dx = xStart; dx < xEnd; dx++, wFixed += wStep, lFixed += lStep) {
+		for (int dx = xStart; dx < xEnd; dx++, wFixed += wStep, lFixed += lStep,
+		         u1Tex = (u1Tex + 1) & 0xFF, v1Tex = (v1Tex - 1) & 0xFF,
+		         u2Fixed += u2Step, v2Fixed += v2Step) {
 			const int screenX = leftX + dx;
 			if (screenX < 0 || screenX >= clipW)
 				continue;
@@ -1453,70 +1339,70 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 			if (weight <= 6)
 				continue;
 
-			// Sample 512x512 world-space macro clearing mask to break 256x256 tile periodicity
-			// and carve +30% more open floor clearings between fog banks
-			const int wxMacro = ((worldPxX + dx) >> 1) & 0xFF;
-			const int macroMask = macroRow[wxMacro];
-			const int modAdjust = ((macroMask - 196) * 115) >> 8;
-
-			const int wx1 = (worldPxX + dx + swirlPxX) & 0xFF;
-			const int wx2 = (worldPxX + dx + (swirlPxX >> 1)) & 0xFF;
-			const int wxShadow = (wx2 - 10) & 0xFF;
-
-			const int rawDensity1 = floorRow[wx1] + modAdjust;
-			const int rawDensity2 = canopyRow[wx2] + modAdjust;
-			const int rawShadow2 = shadowRow[wxShadow] + modAdjust;
+			const int rawDensity1 = gCachedFloorFog[v1Tex][u1Tex];
+			const int u2Tex = (u2Fixed >> 8) & 0xFF;
+			const int v2Tex = (v2Fixed >> 8) & 0xFF;
+			const int rawDensity2 = SampleLutBilinear(gCachedCanopyFog, u2Fixed, v2Fixed);
+			// Elevated Layer 2 casts its drop-shadow onto the floor ~7px below (+9 texels in u2, v2)
+			const int rawShadow2 = gCachedCanopyFog[(v2Tex - 5) & 0xFF][(u2Tex - 5) & 0xFF];
 
 			if (rawDensity1 <= floorCutoff && rawDensity2 <= canopyCutoff && rawShadow2 <= canopyCutoff)
 				continue;
 
+			uint8_t outPx = dstRow[screenX];
+			// Do not apply static paletteTransparencyLookup over animated Caves lava pixels (1..31)
+			if (leveltype == DTYPE_CAVES && outPx >= 1 && outPx <= 31)
+				continue;
+
 			const int dither = bayerRow[screenX & 3];
-			// Smoothly dithered vertex-interpolated light index (eliminates per-tile light diamond steps!)
 			const int smoothLightIdx = std::clamp(((lFixed >> 8) + dither * 8) >> 8, 0, 14);
 			const uint8_t litCrest = crestByLight[smoothLightIdx];
 			const uint8_t litCore = coreByLight[smoothLightIdx];
 			const uint8_t litTrough = troughByLight[smoothLightIdx];
+			const uint8_t litLowerDome = lowerDomeByLight[smoothLightIdx];
 
-			uint8_t outPx = dstRow[screenX];
-
-			// Pass 1: Layer 1 (Low Ground-Hugging Mist Bed — medium slate-gray)
+			// Pass 1: Layer 1 (Low Ground-Hugging Mist Bed — smoky slate-gray)
 			if (rawDensity1 > floorCutoff) {
 				const int norm1 = std::min(255, ((rawDensity1 - floorCutoff) * floorScaleRecip) >> 8);
 				const int smooth1 = (norm1 * (384 - norm1)) >> 8;
-				const int alpha1 = (((smooth1 * weight) >> 8) * 165 >> 8) + dither;
-				if (alpha1 > 12) {
-					const uint8_t shade1 = (norm1 + dither * 3 > 145) ? litCore : litTrough;
+				const int alpha1 = (((smooth1 * weight) >> 8) * 205 >> 8) + dither;
+				if (alpha1 > 8) {
+					const uint8_t shade1 = (norm1 + dither * 3 > 140) ? litCore : litTrough;
 					outPx = ApplySoftFogBlend(shade1, outPx, alpha1, false);
 				}
 			}
 
-			// Pass 2: Layer 2 Cast Drop-Shadow (offset +10px X, +6px Y; darkens bare floor AND Layer 1 mist!)
-			if (rawShadow2 > canopyCutoff && rawShadow2 > rawDensity2 - 20) {
+			// Pass 2: Layer 2 Cast Drop-Shadow (blends Pure Black (0) onto bare floor & Layer 1 mist)
+			if (rawShadow2 > canopyCutoff && rawShadow2 > rawDensity2 - 18) {
 				const int normS = std::min(255, ((rawShadow2 - canopyCutoff) * canopyScaleRecip) >> 8);
 				const int shadowAlpha = ((normS * weight) >> 8) + dither;
-				if (shadowAlpha > 110) {
-					outPx = gFogAlphaLut[2][outPx][shadowShade]; // 37.5% charcoal drop-shadow
-				} else if (shadowAlpha > 56) {
-					outPx = gFogAlphaLut[1][outPx][shadowShade]; // 25.0% charcoal drop-shadow
-				} else if (shadowAlpha > 18) {
-					outPx = gFogAlphaLut[0][outPx][shadowShade]; // 12.5% charcoal drop-shadow
+				uint8_t darkened = outPx;
+				if (shadowAlpha > 115) {
+					darkened = Blend19(0, outPx);
+				} else if (shadowAlpha > 64) {
+					darkened = Blend12(0, outPx);
+				} else if (shadowAlpha > 24) {
+					darkened = Blend6(0, outPx);
+				}
+				if (darkened != 0) {
+					outPx = darkened;
 				}
 			}
 
-			// Pass 3: Layer 2 (Elevated 3D Cloud Puffs — sculpted silver-white crests & billowing body)
+			// Pass 3: Layer 2 (Elevated 3D Cloud Puffs — sculpted smoky silver-white crests & body)
 			if (rawDensity2 > canopyCutoff) {
 				const int norm2 = std::min(255, ((rawDensity2 - canopyCutoff) * canopyScaleRecip) >> 8);
 				const int smooth2 = (norm2 * (384 - norm2)) >> 8;
-				const int alpha2 = ((((smooth2 * 235) >> 8) + 18) * weight >> 8) + dither;
-				if (alpha2 > 12) {
-					const int slope = slopeRow[wx2];
+				const int alpha2 = ((((smooth2 * 230) >> 8) + 20) * weight >> 8) + dither;
+				if (alpha2 > 8) {
+					const int slope = gCachedCanopySlope[v2Tex][u2Tex];
 					uint8_t shade2;
-					if (slope * 4 + dither > 20 || norm2 + dither * 3 > 135) {
+					if (slope * 4 + dither > 22 || norm2 + dither * 3 > 145) {
 						shade2 = litCrest;
-					} else if (slope * 4 + dither >= -32) {
+					} else if (slope * 4 + dither >= -28) {
 						shade2 = litCore;
 					} else {
-						shade2 = litTrough;
+						shade2 = litLowerDome;
 					}
 					outPx = ApplySoftFogBlend(shade2, outPx, alpha2, cfg.allowHeavyBlend);
 				}
@@ -1529,6 +1415,9 @@ void DrawGroundFogTileSpan(const Surface &out, Point tilePosition, Point targetB
 
 void DrawGroundFogTileBase(const Surface &out, Point tilePosition, Point targetBufferPosition, int lightIndex)
 {
+	if (leveltype == DTYPE_CAVES) {
+		DrawCavesLavaBubblesOnTile(out, tilePosition, targetBufferPosition, lightIndex);
+	}
 	DrawGroundFogTileSpan(out, tilePosition, targetBufferPosition, lightIndex, 1, 31);
 }
 
