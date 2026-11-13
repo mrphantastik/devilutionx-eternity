@@ -22,9 +22,9 @@ Built on top of the [DevilutionX](https://github.com/diasurgical/devilutionX) en
 - Adapted and integrated from [DevilutionXRandomizer](https://github.com/stoffelkopf/DevilutionXRandomizer) by **stoffelkopf**.
 
 <p align="center">
-<img src="assets/ss-caves.png" width="24%" alt="Caves">
+<img src="assets/ss-caves1.png" width="24%" alt="Caves">
 <img src="assets/ss-crypt.png" width="24%" alt="Crypt">
-<img src="assets/ss-hell.png" width="24%" alt="Hell">
+<img src="assets/ss-hell1.png" width="24%" alt="Hell">
 </p>
 
 ---
