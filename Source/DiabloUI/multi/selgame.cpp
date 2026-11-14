@@ -12,6 +12,7 @@
 #include "config.h"
 #include "control.h"
 #include "menu.h"
+#include "net/realm_client.h"
 #include "options.h"
 #include "storm/storm_net.hpp"
 #include "utils/language.h"
@@ -24,6 +25,7 @@ char selgame_Label[32];
 char selgame_Ip[129] = "";
 char selgame_Password[16] = "";
 char selgame_Description[512];
+char selgame_HeroName[16] = "";
 std::string selgame_Title;
 bool selgame_enteringGame;
 int selgame_selectedGame;
@@ -149,13 +151,12 @@ void UiInitGameSelectionList(string_view search)
 	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Create Public Game"), 1, UiFlags::ColorUiGold));
 	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Join Game"), 2, UiFlags::ColorUiGold));
 
-	if (provider == SELCONN_ZT) {
+	if (provider == SELCONN_ZT || provider == SELCONN_REALM) {
 		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>("", -1, UiFlags::ElementDisabled));
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Public Games"), -1, UiFlags::ElementDisabled | UiFlags::ColorWhitegold));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(provider == SELCONN_REALM ? _("Active Realm Games") : _("Public Games"), -1, UiFlags::ElementDisabled | UiFlags::ColorWhitegold));
 
 		if (Gamelist.empty()) {
-			// We expect the game list to be received after 3 seconds
-			if (firstPublicGameInfoRequestSend == 0 || (SDL_GetTicks() - firstPublicGameInfoRequestSend) < 2000)
+			if (provider == SELCONN_ZT && (firstPublicGameInfoRequestSend == 0 || (SDL_GetTicks() - firstPublicGameInfoRequestSend) < 2000))
 				vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Loading..."), -1, UiFlags::ElementDisabled | UiFlags::ColorUiSilver));
 			else
 				vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("None"), -1, UiFlags::ElementDisabled | UiFlags::ColorUiSilver));
@@ -289,6 +290,7 @@ bool UpdateHeroLevel(_uiheroinfo *pInfo)
 	if (pInfo->saveNumber == gSaveNumber) {
 		heroLevel = pInfo->level;
 		heroRank = pInfo->herorank;
+		CopyUtf8(selgame_HeroName, pInfo->name, sizeof(selgame_HeroName));
 	}
 
 	return true;
@@ -357,6 +359,8 @@ void selgame_GameSelection_Select(int value)
 		const char *inputHint;
 		if (provider == SELCONN_ZT) {
 			inputHint = _("Enter Game ID").data();
+		} else if (provider == SELCONN_REALM) {
+			inputHint = _("Enter Game Name").data();
 		} else {
 			inputHint = _("Enter address").data();
 		}
@@ -627,6 +631,70 @@ static bool IsGameCompatibleWithErrorMessage(const GameData &data)
 	return false;
 }
 
+bool PromptRealmCreateGameName()
+{
+	if (selgame_Ip[0] == '\0') {
+		if (selgame_HeroName[0] != '\0')
+			std::snprintf(selgame_Ip, sizeof(selgame_Ip), "%s1", selgame_HeroName);
+		else
+			std::snprintf(selgame_Ip, sizeof(selgame_Ip), "%s", "RealmGame1");
+	}
+
+	std::vector<std::unique_ptr<UiItemBase>> dlg;
+	bool accepted = false;
+	bool done = false;
+
+	UiAddBackground(&dlg);
+	UiAddLogo(&dlg);
+
+	const Point uiPosition = GetUIRectangle().position;
+
+	SDL_Rect rect1 = { (Sint16)(uiPosition.x + 24), (Sint16)(uiPosition.y + 161), 590, 35 };
+	dlg.push_back(std::make_unique<UiArtText>(_(ConnectionNames[provider]).data(), rect1, UiFlags::AlignCenter | UiFlags::FontSize30 | UiFlags::ColorUiSilver, 3));
+
+	SDL_Rect rect2 = { (Sint16)(uiPosition.x + 35), (Sint16)(uiPosition.y + 211), 205, 192 };
+	dlg.push_back(std::make_unique<UiArtText>(_("Description:").data(), rect2, UiFlags::FontSize24 | UiFlags::ColorUiSilver));
+
+	SDL_Rect rect3 = { (Sint16)(uiPosition.x + 35), (Sint16)(uiPosition.y + 256), DESCRIPTION_WIDTH, 192 };
+	dlg.push_back(std::make_unique<UiArtText>(selgame_Description, rect3, UiFlags::FontSize12 | UiFlags::ColorUiSilverDark, 1, 16));
+
+	SDL_Rect rect4 = { (Sint16)(uiPosition.x + 305), (Sint16)(uiPosition.y + 211), 285, 33 };
+	dlg.push_back(std::make_unique<UiArtText>(_("Enter Game Name").data(), rect4, UiFlags::AlignCenter | UiFlags::FontSize30 | UiFlags::ColorUiSilver, 3));
+
+	SDL_Rect rect5 = { (Sint16)(uiPosition.x + 305), (Sint16)(uiPosition.y + 314), 285, 33 };
+	dlg.push_back(std::make_unique<UiEdit>(_("Enter Game Name"), selgame_Ip, 28, false, rect5, UiFlags::FontSize24 | UiFlags::ColorUiGold));
+
+	SDL_Rect rect6 = { (Sint16)(uiPosition.x + 299), (Sint16)(uiPosition.y + 427), 140, 35 };
+	dlg.push_back(std::make_unique<UiArtTextButton>(_("OK"), &UiFocusNavigationSelect, rect6, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
+
+	SDL_Rect rect7 = { (Sint16)(uiPosition.x + 449), (Sint16)(uiPosition.y + 427), 140, 35 };
+	dlg.push_back(std::make_unique<UiArtTextButton>(_("CANCEL"), &UiFocusNavigationEsc, rect7, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
+
+	static bool *sAccepted = nullptr;
+	static bool *sDone = nullptr;
+	sAccepted = &accepted;
+	sDone = &done;
+
+	UiInitList(
+	    nullptr,
+	    [](int) {
+		    *sAccepted = true;
+		    *sDone = true;
+	    },
+	    []() {
+		    *sAccepted = false;
+		    *sDone = true;
+	    },
+	    dlg);
+
+	while (!done) {
+		UiClearScreen();
+		UiPollAndRender();
+	}
+	UiInitList_clear();
+	return accepted;
+}
+
 void selgame_Password_Select(int /*value*/)
 {
 	char *gamePassword = nullptr;
@@ -635,10 +703,84 @@ void selgame_Password_Select(int /*value*/)
 	if (selgame_selectedGame == 2 && strlen(selgame_Password) > 0)
 		gamePassword = selgame_Password;
 
-	// If there is an error, the error message won't necessarily be set.
-	// Clear the error so that we display "Unknown network error"
-	// instead of an arbitrary message in that case.
 	SDL_ClearError();
+
+	if (provider == SELCONN_REALM) {
+		if (selgame_selectedGame > 1) {
+			realm::GameCreateOrJoinResponsePayload joinResp {};
+			std::string errMsg;
+			if (!GetRealmClient().JoinGame(selgame_Ip, gamePassword != nullptr ? gamePassword : "", joinResp, errMsg)) {
+				InitGameInfo();
+				selgame_Free();
+				if (errMsg.empty())
+					errMsg = "Could not join Closed Realm game.";
+				UiSelOkDialog(_("Closed Realm (DX:Eternity)").data(), errMsg.c_str(), false);
+				selgame_Init();
+				UiInitGameSelectionList("");
+				return;
+			}
+			m_game_data->dwSeed = joinResp.terrainInitSeed;
+			m_game_data->nDifficulty = static_cast<_difficulty>(joinResp.difficulty);
+			m_game_data->nTickRate = 20;
+			m_game_data->bRunInTown = 1;
+			m_game_data->bTheoQuest = 1;
+			m_game_data->bCowQuest = 1;
+			if (SNetJoinGame(selgame_Ip, gamePassword, gdwPlayerId)) {
+				UiInitList_clear();
+				selgame_endMenu = true;
+			} else {
+				InitGameInfo();
+				selgame_Free();
+				UiSelOkDialog(_("Closed Realm (DX:Eternity)").data(), _("Failed to initialize Realm session.").data(), false);
+				selgame_Init();
+				UiInitGameSelectionList("");
+			}
+			return;
+		}
+
+		selgame_FreeVectors();
+		if (!PromptRealmCreateGameName()) {
+			selgame_GameSpeedSelection();
+			return;
+		}
+
+		realm::GameCreateOrJoinResponsePayload createResp {};
+		std::string errMsg;
+		if (!GetRealmClient().CreateGame(
+		        selgame_Ip,
+		        gamePassword != nullptr ? gamePassword : "",
+		        static_cast<uint8_t>(nDifficulty),
+		        createResp,
+		        errMsg)) {
+			selgame_Free();
+			if (errMsg.empty())
+				errMsg = "Failed to create game on Closed Realm.";
+			UiSelOkDialog(_("Closed Realm (DX:Eternity)").data(), errMsg.c_str(), false);
+			selgame_Init();
+			UiInitGameSelectionList("");
+			return;
+		}
+
+		m_game_data->dwSeed = createResp.terrainInitSeed;
+		m_game_data->nDifficulty = nDifficulty;
+		m_game_data->nTickRate = nTickRate;
+		m_game_data->bRunInTown = *sgOptions.Gameplay.runInTown ? 1 : 0;
+		m_game_data->bTheoQuest = *sgOptions.Gameplay.theoQuest ? 1 : 0;
+		m_game_data->bCowQuest = *sgOptions.Gameplay.cowQuest ? 1 : 0;
+
+		GameData gameInitInfo = *m_game_data;
+		gameInitInfo.swapLE();
+		if (SNetCreateGame(selgame_Ip, gamePassword, reinterpret_cast<char *>(&gameInitInfo), sizeof(gameInitInfo), gdwPlayerId)) {
+			UiInitList_clear();
+			selgame_endMenu = true;
+		} else {
+			selgame_Free();
+			UiSelOkDialog(_("Closed Realm (DX:Eternity)").data(), _("Failed to start game.").data(), false);
+			selgame_Init();
+			UiInitGameSelectionList("");
+		}
+		return;
+	}
 
 	if (selgame_selectedGame > 1) {
 		bool allowJoin = true;
@@ -754,6 +896,29 @@ bool UiSelectGame(GameData *gameData, int *playerId)
 
 	DvlNet_ClearPassword();
 	DvlNet_ClearGamelist();
+
+	if (provider == SELCONN_REALM) {
+		Gamelist.clear();
+		std::vector<realm::GameLobbyInfo> realmGames;
+		std::string errMsg;
+		if (GetRealmClient().ListGames(realmGames, errMsg)) {
+			for (const auto &rg : realmGames) {
+				GameInfo gi {};
+				gi.name = rg.gameName;
+				gi.gameData.size = sizeof(GameData);
+				gi.gameData.nDifficulty = static_cast<_difficulty>(rg.difficulty);
+				gi.gameData.nTickRate = 20;
+				gi.gameData.bRunInTown = 1;
+				gi.gameData.versionMajor = PROJECT_VERSION_MAJOR;
+				gi.gameData.versionMinor = PROJECT_VERSION_MINOR;
+				gi.gameData.versionPatch = PROJECT_VERSION_PATCH;
+				gi.gameData.programid = GAME_ID;
+				gi.players.emplace_back(fmt::format("{}/{}", rg.currentPlayers, rg.maxPlayers));
+				Gamelist.push_back(std::move(gi));
+			}
+		}
+		UiInitGameSelectionList("");
+	}
 
 	while (!selgame_endMenu) {
 		UiClearScreen();

@@ -648,8 +648,14 @@ struct NetworkOptions : OptionCategoryBase {
 	char szPreviousZTGame[129];
 	/** @brief Most recently entered Hostname in join dialog. */
 	char szPreviousHost[129];
+	/** @brief Closed Realm Server IP or hostname (diablo.ini [Network] Realm Host). */
+	char szRealmHost[129];
+	/** @brief Most recently entered Closed Realm account username. */
+	char szRealmUsername[33];
 	/** @brief What network port to use. */
 	OptionEntryInt<uint16_t> port;
+	/** @brief What Closed Realm TCP port to use. */
+	OptionEntryInt<uint16_t> realmPort;
 };
 
 struct ChatOptions : OptionCategoryBase {

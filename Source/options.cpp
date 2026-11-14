@@ -374,6 +374,8 @@ void LoadOptions()
 	GetIniValue("Network", "Bind Address", sgOptions.Network.szBindAddress, sizeof(sgOptions.Network.szBindAddress), "0.0.0.0");
 	GetIniValue("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame, sizeof(sgOptions.Network.szPreviousZTGame), "");
 	GetIniValue("Network", "Previous Host", sgOptions.Network.szPreviousHost, sizeof(sgOptions.Network.szPreviousHost), "");
+	GetIniValue("Network", "Realm Host", sgOptions.Network.szRealmHost, sizeof(sgOptions.Network.szRealmHost), "127.0.0.1");
+	GetIniValue("Network", "Realm Username", sgOptions.Network.szRealmUsername, sizeof(sgOptions.Network.szRealmUsername), "");
 
 	for (size_t i = 0; i < QUICK_MESSAGE_OPTIONS; i++)
 		GetIniStringVector("NetMsg", QuickMessages[i].key, sgOptions.Chat.szHotKeyMsgs[i]);
@@ -404,6 +406,8 @@ void SaveOptions()
 	SetIniValue("Network", "Bind Address", sgOptions.Network.szBindAddress);
 	SetIniValue("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame);
 	SetIniValue("Network", "Previous Host", sgOptions.Network.szPreviousHost);
+	SetIniValue("Network", "Realm Host", sgOptions.Network.szRealmHost);
+	SetIniValue("Network", "Realm Username", sgOptions.Network.szRealmUsername);
 
 	for (size_t i = 0; i < QUICK_MESSAGE_OPTIONS; i++)
 		SetIniValue("NetMsg", QuickMessages[i].key, sgOptions.Chat.szHotKeyMsgs[i]);
@@ -1180,12 +1184,16 @@ std::vector<OptionEntryBase *> ControllerOptions::GetEntries()
 NetworkOptions::NetworkOptions()
     : OptionCategoryBase("Network", N_("Network"), N_("Network Settings"))
     , port("Port", OptionEntryFlags::Invisible, "Port", "What network port to use.", 6112)
+    , realmPort("Realm Port", OptionEntryFlags::Invisible, "Realm Port", "What Closed Realm port to use.", 6112)
 {
+	std::snprintf(szRealmHost, sizeof(szRealmHost), "%s", "127.0.0.1");
+	szRealmUsername[0] = '\0';
 }
 std::vector<OptionEntryBase *> NetworkOptions::GetEntries()
 {
 	return {
 		&port,
+		&realmPort,
 	};
 }
 

@@ -18,6 +18,7 @@
 #include "loadsave.h"
 #include "menu.h"
 #include "mpq/mpq_common.hpp"
+#include "net/realm_client.h"
 #include "pack.h"
 #include "playerdat.hpp"
 #include "qol/stash.h"
@@ -593,6 +594,17 @@ const char *pfile_get_password()
 
 void pfile_write_hero(bool writeGameData)
 {
+	if (gbIsClosedRealm) {
+		PlayerPack pkplr {};
+		Player &myPlayer = *MyPlayer;
+		myPlayer._pGold = CalculateGold(myPlayer);
+		PackPlayer(pkplr, myPlayer);
+		pkplr.pDifficulty = sgGameInitInfo.nDifficulty;
+		std::string errMsg;
+		GetRealmClient().SaveHero(GetRealmClient().GetActiveCharId(), pkplr, errMsg);
+		GetRealmClient().WriteLocalCharacterBackup(pkplr);
+		return;
+	}
 	SaveWriter saveWriter = GetSaveWriter(gSaveNumber);
 	pfile_write_hero(saveWriter, writeGameData);
 }
@@ -629,6 +641,12 @@ void sfile_write_stash()
 	if (!Stash.dirty)
 		return;
 
+	if (gbIsClosedRealm) {
+		if (GetRealmClient().SaveStashToRealm())
+			Stash.dirty = false;
+		return;
+	}
+
 	SaveWriter stashWriter = GetStashWriter();
 
 	SaveStash(stashWriter);
@@ -639,6 +657,35 @@ void sfile_write_stash()
 bool pfile_ui_set_hero_infos(bool (*uiAddHeroInfo)(_uiheroinfo *))
 {
 	memset(hero_names, 0, sizeof(hero_names));
+
+	if (gbIsClosedRealm) {
+		GetRealmClient().ClearSlotCharIds();
+		std::vector<realm::HeroSummaryInfo> realmHeroes;
+		std::string errMsg;
+		if (!GetRealmClient().ListHeroes(realmHeroes, errMsg))
+			return false;
+
+		for (std::size_t i = 0; i < realmHeroes.size() && i < MAX_CHARACTERS; ++i) {
+			const auto &rh = realmHeroes[i];
+			GetRealmClient().SetSlotCharId(static_cast<uint32_t>(i), rh.charId);
+			CopyUtf8(hero_names[i], rh.name, sizeof(hero_names[i]));
+
+			_uiheroinfo uihero {};
+			uihero.saveNumber = static_cast<uint32_t>(i);
+			CopyUtf8(uihero.name, rh.name, sizeof(uihero.name));
+			uihero.level = rh.level;
+			uihero.heroclass = static_cast<HeroClass>(rh.heroClass);
+			uihero.herorank = rh.diabloKillLevel;
+			uihero.strength = rh.baseStr;
+			uihero.magic = rh.baseMag;
+			uihero.dexterity = rh.baseDex;
+			uihero.vitality = rh.baseVit;
+			uihero.hassaved = false;
+			uihero.spawned = gbIsSpawn;
+			uiAddHeroInfo(&uihero);
+		}
+		return true;
+	}
 
 	for (uint32_t i = 0; i < MAX_CHARACTERS; i++) {
 		std::optional<SaveReader> archive = OpenSaveArchive(i);
@@ -697,6 +744,24 @@ bool pfile_ui_save_create(_uiheroinfo *heroinfo)
 
 	giNumberOfLevels = 25;
 
+	if (gbIsClosedRealm) {
+		realm::HeroSummaryInfo summary {};
+		std::string errMsg;
+		if (!GetRealmClient().CreateHero(heroinfo->name, static_cast<uint8_t>(heroinfo->heroclass), summary, pkplr, errMsg))
+			return false;
+
+		GetRealmClient().SetSlotCharId(saveNum, summary.charId);
+		CopyUtf8(hero_names[saveNum], summary.name, sizeof(hero_names[saveNum]));
+
+		Player &player = Players[0];
+		UnPackPlayer(pkplr, player);
+		RemoveAllInvalidItems(player);
+		CalcPlrInv(player, false);
+		Game2UiPlayer(player, heroinfo, false);
+		GetRealmClient().WriteLocalCharacterBackup(pkplr);
+		return true;
+	}
+
 	SaveWriter saveWriter = GetSaveWriter(saveNum);
 	saveWriter.RemoveHashEntries(GetFileName);
 	CopyUtf8(hero_names[saveNum], heroinfo->name, sizeof(hero_names[saveNum]));
@@ -718,6 +783,16 @@ bool pfile_ui_save_create(_uiheroinfo *heroinfo)
 bool pfile_delete_save(_uiheroinfo *heroInfo)
 {
 	uint32_t saveNum = heroInfo->saveNumber;
+	if (gbIsClosedRealm) {
+		if (saveNum < MAX_CHARACTERS) {
+			std::string errMsg;
+			if (!GetRealmClient().DeleteHero(GetRealmClient().GetSlotCharId(saveNum), errMsg))
+				return false;
+			hero_names[saveNum][0] = '\0';
+			GetRealmClient().SetSlotCharId(saveNum, 0);
+		}
+		return true;
+	}
 	if (saveNum < MAX_CHARACTERS) {
 		hero_names[saveNum][0] = '\0';
 		RemoveFile(GetSavePath(saveNum).c_str());
@@ -728,6 +803,22 @@ bool pfile_delete_save(_uiheroinfo *heroInfo)
 void pfile_read_player_from_save(uint32_t saveNum, Player &player)
 {
 	PlayerPack pkplr;
+	if (gbIsClosedRealm) {
+		std::string errMsg;
+		uint64_t charId = GetRealmClient().GetSlotCharId(saveNum);
+		if (charId == 0)
+			charId = GetRealmClient().GetActiveCharId();
+		if (!GetRealmClient().LoadHero(charId, pkplr, errMsg))
+			app_fatal(_("Unable to load character from Closed Realm"));
+
+		gbValidSaveFile = false;
+		UnPackPlayer(pkplr, player);
+		RemoveAllInvalidItems(player);
+		CalcPlrInv(player, false);
+		GetRealmClient().WriteLocalCharacterBackup(pkplr);
+		return;
+	}
+
 	{
 		std::optional<SaveReader> archive = OpenSaveArchive(saveNum);
 		if (!archive)

@@ -33,6 +33,7 @@
 #include "minitext.h"
 #include "missiles.h"
 #include "movie.h"
+#include "net/realm_client.h"
 #include "options.h"
 #include "qol/floatingnumbers.h"
 #include "spelldat.h"
@@ -875,6 +876,12 @@ void DiabloDeath(Monster &diablo, bool sendmsg)
 void SpawnLoot(Monster &monster, bool sendmsg)
 {
 	if (monster.type().type == MT_HORKSPWN) {
+		return;
+	}
+
+	if (gbIsClosedRealm) {
+		if (!monster.isPlayerMinion())
+			GetRealmClient().HandleMonsterKill(monster, sendmsg);
 		return;
 	}
 

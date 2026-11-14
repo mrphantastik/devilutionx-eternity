@@ -30,6 +30,7 @@
 #include "missiles.h"
 #include "monster.h"
 #include "mpq/mpq_common.hpp"
+#include "net/realm_client.h"
 #include "pfile.h"
 #include "playerdat.hpp"
 #include "qol/stash.h"
@@ -2314,6 +2315,11 @@ constexpr uint8_t StashVersion = 0;
 
 void LoadStash()
 {
+	if (gbIsClosedRealm) {
+		GetRealmClient().LoadStashFromRealm();
+		return;
+	}
+
 	const char *filename;
 	if (!gbIsMultiplayer)
 		filename = "spstashitems";

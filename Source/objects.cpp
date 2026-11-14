@@ -34,6 +34,7 @@
 #include "minitext.h"
 #include "missiles.h"
 #include "monster.h"
+#include "net/realm_client.h"
 #include "options.h"
 #include "qol/stash.h"
 #include "stores.h"
@@ -2123,7 +2124,9 @@ void OperateChest(const Player &player, Object &chest, bool sendLootMsg)
 	chest._oSelFlag = 0;
 	chest._oAnimFrame += 2;
 	SetRndSeed(chest._oRndSeed);
-	if (setlevel) {
+	if (gbIsClosedRealm && !setlevel) {
+		GetRealmClient().HandleChestOpen(chest, sendLootMsg);
+	} else if (setlevel) {
 		for (int j = 0; j < chest._oVar1; j++) {
 			CreateRndItem(chest.position, true, sendLootMsg, false);
 		}

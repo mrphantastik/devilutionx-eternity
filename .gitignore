@@ -1,5 +1,6 @@
 # Build & dependency cache
 .deps/
+work_cache/
 SDL2-devel-2.32.0-mingw.tar.gz
 libsodium-1.0.20-mingw.tar.gz
 libsodium-win64/

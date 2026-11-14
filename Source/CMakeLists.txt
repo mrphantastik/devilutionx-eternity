@@ -211,6 +211,8 @@ else()
 endif()
 
 if(NOT NONET)
+  list(APPEND libdevilutionx_SRCS
+    net/realm_client.cpp)
   if(NOT DISABLE_TCP)
     list(APPEND libdevilutionx_SRCS
       dvlnet/tcp_client.cpp
@@ -294,7 +296,7 @@ if(NOT NOSOUND)
 endif()
 
 if(MINGW)
-  target_link_libraries(libdevilutionx PUBLIC -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+  target_link_libraries(libdevilutionx PUBLIC -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic ws2_32)
 endif()
 
 if(NOT NONET AND NOT DISABLE_ZERO_TIER)

@@ -58,6 +58,7 @@
 #include "menu.h"
 #include "minitext.h"
 #include "missiles.h"
+#include "net/realm_client.h"
 #include "movie.h"
 #include "multi.h"
 #include "nthread.h"
@@ -3026,6 +3027,9 @@ void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 	}
 
 	ResetGroundFogLevel();
+	if (gbIsClosedRealm && MyPlayer != nullptr) {
+		GetRealmClient().NotifyFloorTransition(currlevel, MyPlayer->position.tile);
+	}
 	CompleteProgress();
 
 	// Recalculate mouse selection of entities after level change/load

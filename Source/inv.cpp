@@ -21,6 +21,7 @@
 #include "inv_iterators.hpp"
 #include "levels/town.h"
 #include "minitext.h"
+#include "net/realm_client.h"
 #include "options.h"
 #include "panels/ui_panels.hpp"
 #include "plrmsg.h"
@@ -1573,6 +1574,10 @@ void InvGetItem(Player &player, int ii)
 		NewCursor(player.HoldItem);
 	}
 
+	if (gbIsClosedRealm && &player == MyPlayer) {
+		GetRealmClient().NotifyItemPickup(item);
+	}
+
 	// This potentially moves items in memory so must be done after we've made a copy
 	CleanupItems(ii);
 	pcursitem = -1;
@@ -1652,6 +1657,9 @@ void AutoGetItem(Player &player, Item *itemPointer, int ii)
 	}
 
 	if (done) {
+		if (gbIsClosedRealm && &player == MyPlayer) {
+			GetRealmClient().NotifyItemPickup(item);
+		}
 		if (!autoEquipped && *sgOptions.Audio.itemPickupSound && &player == MyPlayer) {
 			PlaySFX(IS_IGRAB);
 		}

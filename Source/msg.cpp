@@ -30,6 +30,7 @@
 #include "levels/trigs.h"
 #include "lighting.h"
 #include "missiles.h"
+#include "net/realm_client.h"
 #include "nthread.h"
 #include "objects.h"
 #include "options.h"
@@ -1326,8 +1327,11 @@ size_t OnPutItem(const TCmd *pCmd, size_t pnum)
 			if (ii != -1) {
 				PutItemRecord(dwSeed, wCI, wIndx);
 				DeltaPutItem(message, Items[ii].position, player);
-				if (isSelf)
+				if (isSelf) {
+					if (gbIsClosedRealm)
+						GetRealmClient().NotifyItemDrop(Items[ii], Items[ii].position);
 					pfile_update(true);
+				}
 			}
 			return sizeof(message);
 		} else {
@@ -1358,8 +1362,11 @@ size_t OnSyncPutItem(const TCmd *pCmd, size_t pnum)
 			if (ii != -1) {
 				PutItemRecord(dwSeed, wCI, wIndx);
 				DeltaPutItem(message, Items[ii].position, player);
-				if (&player == MyPlayer)
+				if (&player == MyPlayer) {
+					if (gbIsClosedRealm)
+						GetRealmClient().NotifyItemDrop(Items[ii], Items[ii].position);
 					pfile_update(true);
+				}
 			}
 			return sizeof(message);
 		} else {
