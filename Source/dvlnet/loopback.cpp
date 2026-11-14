@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "multi.h"
+#include "net/realm_client.h"
 #include "player.h"
 #include "utils/language.h"
 #include "utils/stubs.h"
@@ -12,13 +13,13 @@ namespace net {
 
 int loopback::create(std::string /*addrstr*/)
 {
-	IsLoopback = true;
+	IsLoopback = !gbIsClosedRealm;
 	return plr_single;
 }
 
 int loopback::join(std::string /*addrstr*/)
 {
-	IsLoopback = true;
+	IsLoopback = !gbIsClosedRealm;
 	return plr_single;
 }
 

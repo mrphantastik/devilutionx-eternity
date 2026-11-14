@@ -119,6 +119,8 @@ void UiInitGameSelectionList(string_view search)
 
 	if (provider == SELCONN_ZT) {
 		CopyUtf8(selgame_Ip, sgOptions.Network.szPreviousZTGame, sizeof(selgame_Ip));
+	} else if (provider == SELCONN_REALM) {
+		selgame_Ip[0] = '\0';
 	} else {
 		CopyUtf8(selgame_Ip, sgOptions.Network.szPreviousHost, sizeof(selgame_Ip));
 	}
@@ -360,6 +362,7 @@ void selgame_GameSelection_Select(int value)
 		if (provider == SELCONN_ZT) {
 			inputHint = _("Enter Game ID").data();
 		} else if (provider == SELCONN_REALM) {
+			selgame_Ip[0] = '\0';
 			inputHint = _("Enter Game Name").data();
 		} else {
 			inputHint = _("Enter address").data();
@@ -523,10 +526,15 @@ void selgame_GameSpeedSelection()
 	SDL_Rect rect4 = { (Sint16)(uiPosition.x + 299), (Sint16)(uiPosition.y + 211), 295, 35 };
 	vecSelGameDialog.push_back(std::make_unique<UiArtText>(_("Select Game Speed").data(), rect4, UiFlags::AlignCenter | UiFlags::FontSize30 | UiFlags::ColorUiSilver, 3));
 
-	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Normal"), 20));
-	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Fast"), 30));
-	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Faster"), 40));
-	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Fastest"), 50));
+	if (provider == SELCONN_REALM) {
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Fast"), 30));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Normal"), 20));
+	} else {
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Normal"), 20));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Fast"), 30));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Faster"), 40));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Fastest"), 50));
+	}
 
 	vecSelGameDialog.push_back(std::make_unique<UiList>(vecSelGameDlgItems, vecSelGameDlgItems.size(), uiPosition.x + 300, (uiPosition.y + 279), 295, 26, UiFlags::AlignCenter | UiFlags::FontSize24 | UiFlags::ColorUiGold));
 
@@ -633,12 +641,7 @@ static bool IsGameCompatibleWithErrorMessage(const GameData &data)
 
 bool PromptRealmCreateGameName()
 {
-	if (selgame_Ip[0] == '\0') {
-		if (selgame_HeroName[0] != '\0')
-			std::snprintf(selgame_Ip, sizeof(selgame_Ip), "%s1", selgame_HeroName);
-		else
-			std::snprintf(selgame_Ip, sizeof(selgame_Ip), "%s", "RealmGame1");
-	}
+	selgame_Ip[0] = '\0';
 
 	std::vector<std::unique_ptr<UiItemBase>> dlg;
 	bool accepted = false;
@@ -721,7 +724,9 @@ void selgame_Password_Select(int /*value*/)
 			}
 			m_game_data->dwSeed = joinResp.terrainInitSeed;
 			m_game_data->nDifficulty = static_cast<_difficulty>(joinResp.difficulty);
-			m_game_data->nTickRate = 20;
+			m_game_data->nTickRate = (joinResp.tickRate >= realm::MinClosedRealmTickRate && joinResp.tickRate <= realm::MaxClosedRealmTickRate)
+			    ? joinResp.tickRate
+			    : realm::DefaultClosedRealmTickRate;
 			m_game_data->bRunInTown = 1;
 			m_game_data->bTheoQuest = 1;
 			m_game_data->bCowQuest = 1;
@@ -750,6 +755,7 @@ void selgame_Password_Select(int /*value*/)
 		        selgame_Ip,
 		        gamePassword != nullptr ? gamePassword : "",
 		        static_cast<uint8_t>(nDifficulty),
+		        static_cast<uint8_t>(nTickRate),
 		        createResp,
 		        errMsg)) {
 			selgame_Free();
@@ -763,7 +769,9 @@ void selgame_Password_Select(int /*value*/)
 
 		m_game_data->dwSeed = createResp.terrainInitSeed;
 		m_game_data->nDifficulty = nDifficulty;
-		m_game_data->nTickRate = nTickRate;
+		m_game_data->nTickRate = (createResp.tickRate >= realm::MinClosedRealmTickRate && createResp.tickRate <= realm::MaxClosedRealmTickRate)
+		    ? createResp.tickRate
+		    : nTickRate;
 		m_game_data->bRunInTown = *sgOptions.Gameplay.runInTown ? 1 : 0;
 		m_game_data->bTheoQuest = *sgOptions.Gameplay.theoQuest ? 1 : 0;
 		m_game_data->bCowQuest = *sgOptions.Gameplay.cowQuest ? 1 : 0;

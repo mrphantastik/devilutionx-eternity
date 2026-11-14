@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -1019,6 +1021,7 @@ bool RealmClient::CreateGame(
     const std::string &gameName,
     const std::string &gamePassword,
     uint8_t difficulty,
+    uint8_t tickRate,
     realm::GameCreateOrJoinResponsePayload &outResp,
     std::string &outError)
 {
@@ -1033,7 +1036,9 @@ bool RealmClient::CreateGame(
 	req.difficulty = difficulty;
 	req.maxPlayers = 4;
 	req.bIsHellfire = 1;
-	req.reserved = 0;
+	req.tickRate = (tickRate >= realm::MinClosedRealmTickRate && tickRate <= realm::MaxClosedRealmTickRate)
+	    ? tickRate
+	    : realm::DefaultClosedRealmTickRate;
 
 	realm::RealmPacketHeader hdr {};
 	std::vector<uint8_t> payload;
@@ -1309,5 +1314,160 @@ void RealmClient::WriteLocalCharacterBackup(const PlayerPack &pack)
 		std::fclose(fp);
 	}
 }
+
+bool RealmClient::SendRawRpc(
+    realm::RealmOpcode reqOpcode,
+    const void *reqPayload,
+    uint32_t reqLen,
+    realm::RealmOpcode expectedRespOpcode,
+    void *outResp,
+    uint32_t outRespLen)
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	std::string err;
+	if (!EnsureAuthenticatedSession(err))
+		return false;
+
+	realm::RealmPacketHeader hdr {};
+	std::vector<uint8_t> payload;
+	if (!SendAndReceive(reqOpcode, reqPayload, reqLen, hdr, payload, err))
+		return false;
+
+	if (static_cast<realm::RealmOpcode>(hdr.opcode) != expectedRespOpcode || payload.size() < outRespLen)
+		return false;
+
+	if (outResp != nullptr && outRespLen > 0)
+		std::memcpy(outResp, payload.data(), outRespLen);
+	return true;
+}
+
+void RealmClientLog(const char *severity, const char *category, const char *fmt, ...)
+{
+	if (!gbIsClosedRealm)
+		return;
+
+	const std::string logPath = paths::PrefPath() + "dx-eternity-client-realm.log";
+	std::FILE *fp = std::fopen(logPath.c_str(), "a");
+	if (fp == nullptr)
+		return;
+
+	const std::time_t nowSec = std::time(nullptr);
+	std::tm tmBuf {};
+#ifdef _WIN32
+	gmtime_s(&tmBuf, &nowSec);
+#else
+	gmtime_r(&nowSec, &tmBuf);
+#endif
+	char ts[32] {};
+	std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S UTC", &tmBuf);
+
+	std::fprintf(fp, "[%s] [%s] [%s] ", ts, severity, category);
+	va_list args;
+	va_start(args, fmt);
+	std::vfprintf(fp, fmt, args);
+	va_end(args);
+	std::fprintf(fp, "\n");
+	std::fclose(fp);
+}
+
+#ifdef REALM_CHAOS_TEST
+void RunRealmChaosExploitTest(int exploitId)
+{
+	if (!gbIsClosedRealm || MyPlayerId < 0 || MyPlayerId >= MAX_PLRS)
+		return;
+
+	auto &plr = Players[MyPlayerId];
+	switch (exploitId) {
+	case 1: // [Ctrl+Alt+F5] Simulate Memory Trainer: +500,000 Gold & +50 Base Strength before Save
+		plr._pGold += 500000;
+		plr._pBaseStr = 250;
+		RealmClientLog("WARN", "CHAOS_TEST", "Triggered Trainer Gold/Str mutation -> sending OP_HERO_SAVE_REQ (expect ERR_SAVE_AUDIT_FAILED=19)");
+		pfile_write_hero();
+		NetSendCmdString(1 << MyPlayerId, "[Chaos Test F5] Trainer Gold/Str mutation -> sent OP_HERO_SAVE_REQ");
+		break;
+
+	case 2: // [Ctrl+Alt+F6] Simulate Item Dupe Trainer: Clone Equipped Weapon (InvBody[4]) into InvList[0]
+		plr.InvList[0] = plr.InvBody[INVLOC_HAND_LEFT];
+		if (plr._pNumInv < 1)
+			plr._pNumInv = 1;
+		RealmClientLog("WARN", "CHAOS_TEST", "Triggered Equipped Item Clone -> sending OP_HERO_SAVE_REQ (expect ERR_SAVE_AUDIT_FAILED=19)");
+		pfile_write_hero();
+		NetSendCmdString(1 << MyPlayerId, "[Chaos Test F6] Cloned Weapon into InvList[0] -> sent OP_HERO_SAVE_REQ");
+		break;
+
+	case 3: // [Ctrl+Alt+F7] Simulate 1-Shot God-Mode Boss Kill Packet (combatDurationMs=10ms, maxSingleHitDealt=99999)
+	{
+		devilution::realm::MonsterDropRequestPayload fakeKill {};
+		fakeKill.gameId = GetRealmClient().GetActiveGameId();
+		fakeKill.currlevel = currlevel;
+		fakeKill.tileX = static_cast<uint8_t>(std::clamp<int>(plr.position.tile.x, 0, MAXDUNX - 1));
+		fakeKill.tileY = static_cast<uint8_t>(std::clamp<int>(plr.position.tile.y, 0, MAXDUNY - 1));
+		fakeKill.isUniqueMonster = 0;
+		fakeKill.monsterIndex = 0;
+		fakeKill.monsterTypeOrUid = MT_DIABLO;
+		fakeKill.totalDamageDealt = 99999;
+		fakeKill.maxSingleHitDealt = 99999;
+		fakeKill.combatDurationMs = 10; // Impossible 10ms kill!
+		devilution::realm::MonsterOrChestDropResponsePayload resp {};
+		GetRealmClient().SendRawRpc(
+		    devilution::realm::RealmOpcode::OP_MONSTER_DROP_REQ, &fakeKill, sizeof(fakeKill),
+		    devilution::realm::RealmOpcode::OP_MONSTER_DROP_RESP, &resp, sizeof(resp));
+		RealmClientLog("WARN", "CHAOS_TEST", "Sent 1-Shot Diablo Kill RPC -> server returned statusCode=%u (expect ERR_ANOMALY_TTK_VIOLATION=16)", resp.statusCode);
+		NetSendCmdString(1 << MyPlayerId, fmt::format("[Chaos Test F7] 1-Shot Diablo Kill RPC -> status={} (expect 16)", resp.statusCode).c_str());
+		break;
+	}
+
+	case 4: // [Ctrl+Alt+F8] Simulate Maphack / Town-to-Hell-16 Floor Warp Packet
+	{
+		devilution::realm::FloorTransitionRequestPayload fakeWarp {
+			GetRealmClient().GetActiveGameId(),
+			currlevel,
+			16,
+			40,
+			40
+		};
+		devilution::realm::FloorTransitionResponsePayload resp {};
+		GetRealmClient().SendRawRpc(
+		    devilution::realm::RealmOpcode::OP_FLOOR_TRANSITION_REQ, &fakeWarp, sizeof(fakeWarp),
+		    devilution::realm::RealmOpcode::OP_FLOOR_TRANSITION_RESP, &resp, sizeof(resp));
+		RealmClientLog("WARN", "CHAOS_TEST", "Sent illegal Floor Warp %u->16 -> server returned statusCode=%u (expect ERR_ANOMALY_FLOOR_GATE_VIOLATION=18)", currlevel, resp.statusCode);
+		NetSendCmdString(1 << MyPlayerId, fmt::format("[Chaos Test F8] Illegal Floor Warp {}->16 -> status={} (expect 18)", currlevel, resp.statusCode).c_str());
+		break;
+	}
+
+	case 5: // [Ctrl+Alt+F9] Simulate Forged Ground Item Pickup Packet
+	{
+		devilution::realm::ItemPickupRequestPayload fakePickup {};
+		fakePickup.gameId = GetRealmClient().GetActiveGameId();
+		fakePickup.itemUid = 0xDEADBEEFULL;
+		fakePickup.currlevel = currlevel;
+		fakePickup.tileX = static_cast<uint8_t>(std::clamp<int>(plr.position.tile.x, 0, MAXDUNX - 1));
+		fakePickup.tileY = static_cast<uint8_t>(std::clamp<int>(plr.position.tile.y, 0, MAXDUNY - 1));
+		fakePickup.iSeed = 0x1337BEEFU;
+		fakePickup.idx = 10;
+		fakePickup.iCreateInfo = 1;
+		devilution::realm::ItemPickupResponsePayload resp {};
+		GetRealmClient().SendRawRpc(
+		    devilution::realm::RealmOpcode::OP_ITEM_PICKUP_REQ, &fakePickup, sizeof(fakePickup),
+		    devilution::realm::RealmOpcode::OP_ITEM_PICKUP_RESP, &resp, sizeof(resp));
+		RealmClientLog("WARN", "CHAOS_TEST", "Sent Forged Item Pickup RPC -> server returned statusCode=%u (expect ERR_ITEM_NOT_ON_GROUND=15)", resp.statusCode);
+		NetSendCmdString(1 << MyPlayerId, fmt::format("[Chaos Test F9] Forged Item Pickup RPC -> status={} (expect 15)", resp.statusCode).c_str());
+		break;
+	}
+
+	case 6: // [Ctrl+Alt+F10] Simulate Unbacked Stash Gold Injection (> 300k hard cap)
+	{
+		devilution::realm::StashDataHeader fakeStash { 0, 0, 999999U };
+		devilution::realm::StashSaveResponsePayload resp {};
+		GetRealmClient().SendRawRpc(
+		    devilution::realm::RealmOpcode::OP_STASH_SAVE_REQ, &fakeStash, sizeof(fakeStash),
+		    devilution::realm::RealmOpcode::OP_STASH_SAVE_RESP, &resp, sizeof(resp));
+		RealmClientLog("WARN", "CHAOS_TEST", "Sent Over-Cap Stash Gold Save RPC -> server returned statusCode=%u (expect ERR_SAVE_AUDIT_FAILED=19)", resp.statusCode);
+		NetSendCmdString(1 << MyPlayerId, fmt::format("[Chaos Test F10] Over-Cap Stash Gold RPC -> status={} (expect 19)", resp.statusCode).c_str());
+		break;
+	}
+	}
+}
+#endif
 
 } // namespace devilution

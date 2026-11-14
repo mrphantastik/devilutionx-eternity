@@ -266,6 +266,11 @@ if(DISCORD_INTEGRATION)
   target_link_libraries(libdevilutionx PRIVATE discord discord_game_sdk)
 endif()
 
+option(REALM_CHAOS_TEST "Enable Closed Realm Red-Team / Chaos Security Test Hotkeys (Ctrl+Alt+F5..F10)" ON)
+if(REALM_CHAOS_TEST)
+  target_compile_definitions(libdevilutionx PUBLIC REALM_CHAOS_TEST=1)
+endif()
+
 target_link_libraries(libdevilutionx PUBLIC
   Threads::Threads
   DevilutionX::SDL

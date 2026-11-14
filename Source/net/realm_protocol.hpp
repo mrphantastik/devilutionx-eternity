@@ -22,7 +22,13 @@ constexpr uint32_t ClientBuildVersion = 0x00000704U; // Beta v0.7d (0.7.4)
 
 constexpr size_t MaxHeroesPerAccount = 12U;
 constexpr size_t MaxCharactersPerAccount = MaxHeroesPerAccount;
-constexpr size_t MaxStashItems = 400U;
+constexpr size_t MaxStashItems = 100U;               // 1 single 10x10 stash page (max 100 1x1 items)
+constexpr uint16_t MaxGoldStackValue = 5000U;        // Traditional physical gold stack cap (GOLD_MAX_LIMIT)
+constexpr int32_t MaxHeroInventoryGold = 200000;     // 40 inventory slots * 5,000g physical stacks
+constexpr uint32_t MaxSinglePageStashGold = 300000U; // Hard limit: 300,000 gold in 1-page stash (max 60 x 5,000g stacks)
+constexpr uint8_t MinClosedRealmTickRate = 20U;      // 'Normal' DX multiplayer speed (20 ticks/sec)
+constexpr uint8_t DefaultClosedRealmTickRate = 30U;  // 'Fast' DX multiplayer speed (30 ticks/sec, default)
+constexpr uint8_t MaxClosedRealmTickRate = 30U;      // 'Fast' DX multiplayer speed (30 ticks/sec, hard cap)
 constexpr size_t MaxPlayersPerGame = 4U;
 constexpr size_t MaxListedGames = 32U;
 constexpr size_t MaxDropsPerKill = 4U;
@@ -30,6 +36,13 @@ constexpr size_t MaxFloorMonsters = 256U;
 constexpr size_t MaxFloorObjects = 128U;
 constexpr size_t MaxChatMessageLength = 160U;
 constexpr size_t MaxChatHistoryBatch = 16U;
+
+enum RealmChatMessageFlags : uint8_t {
+	CHAT_FLAG_NONE = 0,
+	CHAT_FLAG_WHISPER = 1U << 0,
+	CHAT_FLAG_SYSTEM = 1U << 1,
+	CHAT_FLAG_TORMENT_CROWN = 1U << 2,
+};
 
 enum class RealmOpcode : uint16_t {
 	// System / Transport (0x00xx)
@@ -403,7 +416,7 @@ struct GameCreateRequestPayload {
 	uint8_t difficulty;
 	uint8_t maxPlayers;
 	uint8_t bIsHellfire;
-	uint8_t reserved;
+	uint8_t tickRate;
 };
 static_assert(sizeof(GameCreateRequestPayload) == 76, "GameCreateRequestPayload must be 76 bytes");
 
@@ -422,7 +435,8 @@ struct GameCreateOrJoinResponsePayload {
 	uint32_t terrainInitSeed;
 	uint8_t bIsHellfire;
 	uint8_t maxPlayers;
-	uint16_t reserved;
+	uint8_t tickRate;
+	uint8_t reserved;
 };
 static_assert(sizeof(GameCreateOrJoinResponsePayload) == 20, "GameCreateOrJoinResponsePayload must be 20 bytes");
 
@@ -547,6 +561,60 @@ struct ItemDropResponsePayload {
 	OracleDroppedItemEntry dropped;
 };
 static_assert(sizeof(ItemDropResponsePayload) == 62, "ItemDropResponsePayload must be 62 bytes");
+
+struct ChatMessageEntry {
+	uint64_t messageId;
+	uint64_t timestampSec;
+	uint8_t channelId;
+	uint8_t senderClass;
+	uint8_t senderLevel;
+	uint8_t senderKillLevel;
+	uint8_t flags;
+	uint8_t reserved[3];
+	char senderName[32];
+	char text[MaxChatMessageLength];
+};
+static_assert(sizeof(ChatMessageEntry) == 216, "ChatMessageEntry must be 216 bytes");
+
+struct ChatJoinChannelRequestPayload {
+	uint64_t charId;
+	uint8_t channelId;
+	uint8_t reserved[7];
+};
+static_assert(sizeof(ChatJoinChannelRequestPayload) == 16, "ChatJoinChannelRequestPayload must be 16 bytes");
+
+struct ChatSendRequestPayload {
+	uint8_t channelId;
+	uint8_t reserved[7];
+	char text[MaxChatMessageLength];
+};
+static_assert(sizeof(ChatSendRequestPayload) == 168, "ChatSendRequestPayload must be 168 bytes");
+
+struct ChatSendResponsePayload {
+	uint16_t statusCode;
+	uint8_t channelId;
+	uint8_t reserved[5];
+	uint64_t messageId;
+};
+static_assert(sizeof(ChatSendResponsePayload) == 16, "ChatSendResponsePayload must be 16 bytes");
+
+struct ChatPollRequestPayload {
+	uint64_t afterMessageId;
+	uint8_t channelId;
+	uint8_t reserved[7];
+};
+static_assert(sizeof(ChatPollRequestPayload) == 16, "ChatPollRequestPayload must be 16 bytes");
+
+struct ChatChannelFeedResponsePayload {
+	uint16_t statusCode;
+	uint8_t channelId;
+	uint8_t messageCount;
+	uint16_t channelUsers;
+	uint16_t reserved;
+	uint64_t latestMessageId;
+	ChatMessageEntry messages[MaxChatHistoryBatch];
+};
+static_assert(sizeof(ChatChannelFeedResponsePayload) == 16 + 216 * MaxChatHistoryBatch, "ChatChannelFeedResponsePayload size check");
 
 struct WardenChallengePayload {
 	uint64_t challengeId;

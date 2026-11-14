@@ -15,6 +15,7 @@
 #include "engine/render/automap_render.hpp"
 #include "levels/gendung.h"
 #include "levels/setmaps.h"
+#include "net/realm_client.h"
 #include "player.h"
 #include "utils/language.h"
 #include "utils/stdcompat/algorithm.hpp"
@@ -731,7 +732,7 @@ void DrawAutomapText(const Surface &out)
 	Point linePosition { 8, 8 };
 
 	if (gbIsMultiplayer) {
-		if (GameName != "0.0.0.0" && !IsLoopback) {
+		if (GameName != "0.0.0.0" && (!IsLoopback || gbIsClosedRealm)) {
 			std::string description = std::string(_("Game: "));
 			description.append(GameName);
 			DrawString(out, description, linePosition);
@@ -739,9 +740,9 @@ void DrawAutomapText(const Surface &out)
 		}
 
 		std::string description;
-		if (IsLoopback) {
+		if (IsLoopback && !gbIsClosedRealm) {
 			description = std::string(_("Offline Game"));
-		} else if (!PublicGame) {
+		} else if (!PublicGame && !GamePassword.empty()) {
 			description = std::string(_("Password: "));
 			description.append(GamePassword);
 		} else {

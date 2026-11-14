@@ -528,6 +528,14 @@ void PressKey(SDL_Keycode vkey, uint16_t modState)
 		return;
 	}
 
+#ifdef REALM_CHAOS_TEST
+	if (gbIsClosedRealm && (modState & KMOD_CTRL) != 0 && (modState & KMOD_ALT) != 0
+	    && vkey >= SDLK_F5 && vkey <= SDLK_F10) {
+		RunRealmChaosExploitTest(static_cast<int>(vkey - SDLK_F5) + 1);
+		return;
+	}
+#endif
+
 	sgOptions.Keymapper.KeyPressed(vkey);
 
 	if (PauseMode == 2) {

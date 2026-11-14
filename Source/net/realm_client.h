@@ -63,11 +63,12 @@ public:
 	void ClearSlotCharIds();
 	void SetActiveCharId(uint64_t charId) { activeCharId_ = charId; }
 	uint64_t GetActiveCharId() const { return activeCharId_; }
+	uint64_t GetActiveGameId() const { return activeGameId_; }
 	void WriteLocalCharacterBackup(const PlayerPack &pack);
 
 	// Game Session & Oracle Operations
 	bool ListGames(std::vector<realm::GameLobbyInfo> &outGames, std::string &outError);
-	bool CreateGame(const std::string &gameName, const std::string &gamePassword, uint8_t difficulty, realm::GameCreateOrJoinResponsePayload &outResp, std::string &outError);
+	bool CreateGame(const std::string &gameName, const std::string &gamePassword, uint8_t difficulty, uint8_t tickRate, realm::GameCreateOrJoinResponsePayload &outResp, std::string &outError);
 	bool JoinGame(const std::string &gameName, const std::string &gamePassword, realm::GameCreateOrJoinResponsePayload &outResp, std::string &outError);
 
 	void NotifyFloorTransition(uint8_t targetFloor, Point pos);
@@ -75,6 +76,14 @@ public:
 	bool HandleChestOpen(const Object &chest, bool sendLootMsg);
 	bool NotifyItemPickup(const Item &item);
 	bool NotifyItemDrop(const Item &item, Point pos);
+
+	bool SendRawRpc(
+	    realm::RealmOpcode reqOpcode,
+	    const void *reqPayload,
+	    uint32_t reqLen,
+	    realm::RealmOpcode expectedRespOpcode,
+	    void *outResp,
+	    uint32_t outRespLen);
 
 private:
 	bool OpenAndAttestSocket(std::string &outError);
@@ -129,6 +138,12 @@ private:
 };
 
 RealmClient &GetRealmClient();
+
+void RealmClientLog(const char *severity, const char *category, const char *fmt, ...);
+
+#ifdef REALM_CHAOS_TEST
+void RunRealmChaosExploitTest(int exploitId);
+#endif
 
 void ConvertClientPackToRealmPack(const PlayerPack &src, realm::RealmPlayerPack &dst);
 void ConvertRealmPackToClientPack(const realm::RealmPlayerPack &src, PlayerPack &dst);

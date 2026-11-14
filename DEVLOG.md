@@ -626,3 +626,19 @@
 ### 13.4 Server-Authoritative Character Vault, Stash & Gameplay Ledger Hooks (`Source/pfile.cpp`, `Source/loadsave.cpp`, `Source/menu.cpp`, `Source/diablo.cpp`, `Source/monster.cpp`, `Source/objects.cpp`, `Source/inv.cpp`, `Source/msg.cpp`)
 - Routed `pfile_ui_set_hero_infos`, `pfile_ui_save_create`, `pfile_delete_save`, `pfile_read_player_from_save`, `pfile_write_hero`, `sfile_write_stash`, and `LoadStash` through `GetRealmClient()` whenever `gbIsClosedRealm` is active, and reset `gbIsClosedRealm = false` when entering Single Player (`menu.cpp`).
 - Wired `NotifyFloorTransition()` in `LoadGameLevel()` (`diablo.cpp`), `HandleMonsterKill()` in `SpawnLoot()` (`monster.cpp`, spawning the server's authoritative `RealmCmdGItem` drops via `RecreateItem`), `HandleChestOpen()` in `GetChestItems()` (`objects.cpp`), `NotifyItemPickup()` in `AutoGetItem`/`CheckInvPaste`/`CheckBookLevel` (`inv.cpp`), and `NotifyItemDrop()` in `NetSendCmdGItem`/`NetSendCmdPItem` (`msg.cpp`) so every item minted, picked up, or dropped is recorded in the server's active game ledger and passes `AuditCharacterSaveConservation` on `OP_HERO_SAVE_REQ`.
+
+### 13.5 Automap Game Name Readout Fix, Blank Default Game Name, Closed Realm Speed Cap & Built-In Red-Team / Chaos Security Test Hotkeys (`Source/automap.cpp`, `Source/dvlnet/loopback.cpp`, `Source/DiabloUI/multi/selgame.cpp`, `Source/net/realm_client.*`, `Source/diablo.cpp`)
+- **Automap Game Name Readout (`Source/automap.cpp`, `Source/dvlnet/loopback.cpp`):**
+  - Set `IsLoopback = !gbIsClosedRealm` in `loopback::create()` / `loopback::join()` and updated `DrawAutomapText()` so opening the Automap in a Closed Realm game displays `Game: <GameName>` and `Password: <GamePassword>` (or `Public Game`) in the top-left corner instead of `"Offline Game"`.
+- **Blank Default Game Name & Speed Cap (`Source/DiabloUI/multi/selgame.cpp`):**
+  - Cleared `selgame_Ip[0] = '\0'` in `UiInitGameSelectionList()`, `PromptRealmCreateGameName()`, and `selgame_GameSelection_Select()` when `provider == SELCONN_REALM` so the Create/Join Game Name field starts completely blank instead of pre-filling the character/account name.
+  - Restricted the Closed Realm game speed selector to `Fast (30Hz)` and `Normal (20Hz)` and passed `tickRate` in `GameCreateRequestPayload` / `GameCreateOrJoinResponsePayload` to match `dx-eternity-realm`.
+- **Built-In Red-Team / Chaos Security Test Hotkeys (`#ifdef REALM_CHAOS_TEST`, `Source/net/realm_client.*`, `Source/diablo.cpp`, `Source/CMakeLists.txt`):**
+  - Added `RealmClientLog` (`<PrefPath>/dx-eternity-client-realm.log`), `RealmClient::SendRawRpc`, and `RunRealmChaosExploitTest(int exploitId)` triggered by pressing **`Ctrl+Alt+F5`..`F10`** in-game when `gbIsClosedRealm == true`:
+    - `Ctrl+Alt+F5`: Simulates Memory Trainer (`+500,000` Gold & `250` Base Strength) and sends `OP_HERO_SAVE_REQ` (`expect ERR_SAVE_AUDIT_FAILED = 19`).
+    - `Ctrl+Alt+F6`: Simulates Item Dupe Trainer (clones equipped weapon `InvBody[INVLOC_HAND_LEFT]` into `InvList[0]`) and sends `OP_HERO_SAVE_REQ` (`expect ERR_SAVE_AUDIT_FAILED = 19`).
+    - `Ctrl+Alt+F7`: Sends 1-Shot God-Mode Diablo Kill RPC (`MT_DIABLO`, `combatDurationMs = 10ms`, `maxSingleHitDealt = 99999`) via `OP_MONSTER_DROP_REQ` (`expect ERR_ANOMALY_TTK_VIOLATION = 16`).
+    - `Ctrl+Alt+F8`: Sends illegal Town-to-Hell-16 Floor Warp RPC (`currlevel -> 16`) via `OP_FLOOR_TRANSITION_REQ` (`expect ERR_ANOMALY_FLOOR_GATE_VIOLATION = 18`).
+    - `Ctrl+Alt+F9`: Sends Forged Ground Item Pickup RPC (`itemUid = 0xDEADBEEF`) via `OP_ITEM_PICKUP_REQ` (`expect ERR_ITEM_NOT_ON_GROUND = 15`).
+    - `Ctrl+Alt+F10`: Sends Unbacked Over-Cap Stash Gold Save RPC (`stashGold = 999,999`) via `OP_STASH_SAVE_REQ` (`expect ERR_SAVE_AUDIT_FAILED = 19`).
+
